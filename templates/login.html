@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Login</h2>
+<form id="f">
+    <input type="email" id="email" placeholder="Email" required><br>
+    <input type="password" id="password" placeholder="Password" required><br>
+    <button type="submit">Login</button>
+</form>
+<p id="msg"></p>
+<p><a href="/register">Register</a> | <a href="/forgot-password">Forgot?</a></p>
+<script>
+document.getElementById('f').onsubmit = async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    const res = await fetch('/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email, password})
+    });
+    const data = await res.json();
+    const msg = document.getElementById('msg');
+    if (res.ok) {
+        msg.className = 'success';
+        msg.textContent = 'Login OK! Token: ' + data.access_token;
+    } else {
+        msg.className = 'error';
+        msg.textContent = data.error || 'Login failed';
+    }
+};
+</script>
+{% endblock %}
