@@ -32,4 +32,4 @@ user_db.json
 *~
 
 # Logs
-*.log
+*.log.env
