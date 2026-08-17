@@ -16,7 +16,7 @@ EMAIL_DISPLAY_NAME = "wolfchad"          # optional
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "dev-secret")
 
 # Expirations
-JWT_EXPIRATION = datetime.timedelta(hours=1)
+JWT_EXPIRATION = datetime.timedelta(minutes=1)
 RESET_TOKEN_EXPIRATION = datetime.timedelta(minutes=15)
 VERIFICATION_EXPIRATION = datetime.timedelta(days=1)
 

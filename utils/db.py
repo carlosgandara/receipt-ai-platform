@@ -12,7 +12,6 @@ def _read_db():
         with open(DB_PATH, "r") as f:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
-        # If file is empty or corrupt, reset to default
         return {"users": []}
 
 def _write_db(data):
@@ -41,7 +40,10 @@ def create_user(email, password_hash):
             "verification_token": None,
             "verification_expiry": None,
             "reset_token": None,
-            "reset_expiry": None
+            "reset_expiry": None,
+            "failed_login_attempts": 0,
+            "locked_until": None,
+            "refresh_token_hash": None   # <-- REQUIRED for Refresh Token flow
         }
         data["users"].append(user)
         _write_db(data)
@@ -55,4 +57,4 @@ def update_user(email, updates):
                 user.update(updates)
                 _write_db(data)
                 return user
-        return None
+        return None   # Correct: returns None if email not found
