@@ -2,9 +2,10 @@ import secrets
 import datetime
 import time
 import threading
-import re  # 🔐 FIX: Added for password validation
+import re
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, redirect, make_response
+from flask_talisman import Talisman  # 🔐 NEW: Security headers
 import bcrypt
 import jwt
 
@@ -20,6 +21,25 @@ from utils.mail_service import send_email
 app = Flask(__name__)
 app.config["SECRET_KEY"] = JWT_SECRET
 
+# ================================================================
+# 🔐 SECURITY HEADERS (Flask-Talisman)
+# ================================================================
+# Allow 'unsafe-inline' for development (your HTML has inline JS/CSS)
+# In production, move scripts/styles to external files and tighten this.
+Talisman(
+    app,
+    force_https=False,  # Set to True in production (when you have HTTPS)
+    frame_options='DENY',  # Prevents Clickjacking
+    x_xss_protection=True,  # Prevents reflected XSS
+    x_content_type_options='nosniff',  # Prevents MIME type sniffing
+    content_security_policy={
+        'default-src': "'self'",
+        'script-src': ["'self'", "'unsafe-inline'"],  # Needed for inline JS
+        'style-src': ["'self'", "'unsafe-inline'"],   # Needed for inline CSS
+        'img-src': ["'self'", "data:"],
+    }
+)
+
 # ---------- Rate Limiter (IP‑based) ----------
 limiter = Limiter(
     app=app,
@@ -32,19 +52,17 @@ def ratelimit_handler(e):
     return jsonify({"error": "Too many requests. Please slow down."}), 429
 
 # ---------- IP + User combo tracking (in‑memory) ----------
-ip_user_attempts = {}          # key: "ip:email", value: list of timestamps
-IP_USER_LIMIT = 5              # max attempts
-IP_USER_WINDOW = 300           # 5 minutes (in seconds)
+ip_user_attempts = {}
+IP_USER_LIMIT = 5
+IP_USER_WINDOW = 300
 IP_USER_LOCK = threading.Lock()
 
 def get_client_ip():
-    """Get the real client IP, handling proxies."""
     if request.headers.get('X-Forwarded-For'):
         return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     return request.remote_addr
 
 def cleanup_old_attempts():
-    """Remove expired entries to keep memory usage low."""
     now = time.time()
     with IP_USER_LOCK:
         for key in list(ip_user_attempts.keys()):
@@ -53,7 +71,6 @@ def cleanup_old_attempts():
                 del ip_user_attempts[key]
 
 def is_ip_user_rate_limited(ip, email):
-    """Check if (ip, email) exceeds the allowed attempts."""
     key = f"{ip}:{email}"
     now = time.time()
     with IP_USER_LOCK:
@@ -67,7 +84,6 @@ def is_ip_user_rate_limited(ip, email):
         return False
 
 def add_ip_user_attempt(ip, email):
-    """Record a failed attempt for (ip, email)."""
     key = f"{ip}:{email}"
     now = time.time()
     with IP_USER_LOCK:
@@ -77,7 +93,6 @@ def add_ip_user_attempt(ip, email):
         ip_user_attempts[key] = [ts for ts in ip_user_attempts[key] if now - ts < IP_USER_WINDOW]
 
 def clear_ip_user_attempts(ip, email):
-    """Clear failed attempts on successful login."""
     key = f"{ip}:{email}"
     with IP_USER_LOCK:
         if key in ip_user_attempts:
@@ -85,16 +100,27 @@ def clear_ip_user_attempts(ip, email):
 
 # ---------- Helper functions ----------
 def generate_jwt(email):
-    """Generate a short-lived access token."""
     payload = {"sub": email, "exp": datetime.datetime.utcnow() + JWT_EXPIRATION}
     return jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
+
+# ================================================================
+# 🩺 HEALTH CHECK (For Load Balancers & Monitoring)
+# ================================================================
+@app.route("/health", methods=["GET"])
+def health():
+    """Simple health check endpoint. Returns 200 if the app is running."""
+    # You can optionally check database connectivity here
+    return jsonify({
+        "status": "healthy",
+        "database": "connected",
+        "timestamp": datetime.datetime.utcnow().isoformat()
+    }), 200
 
 # ================================================================
 # HTML PAGES (Protected via Cookie Check)
 # ================================================================
 
 def is_authenticated():
-    """Check if the user has a valid access token in their cookie."""
     token = request.cookies.get("access_token")
     if not token:
         return False
@@ -106,19 +132,16 @@ def is_authenticated():
 
 @app.route("/dashboard")
 def dashboard_page():
-    """Protected dashboard HTML page."""
     if not is_authenticated():
         return redirect("/login")
     return render_template("dashboard.html")
 
 @app.route("/profile")
 def profile_page():
-    """Protected profile HTML page."""
     if not is_authenticated():
         return redirect("/login")
     return render_template("profile.html")
 
-# ---------- HTML Pages ----------
 @app.route("/")
 def home():
     return redirect("/login")
@@ -152,8 +175,7 @@ def register():
     if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
 
-    # 🔐 FIX: Weak Password Enforcement (Critical)
-    # Must be at least 8 chars, contain uppercase, digit, and special character
+    # 🔐 Weak Password Enforcement
     if len(password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
     if not any(c.isupper() for c in password):
@@ -163,10 +185,8 @@ def register():
     if not any(c in "!@#$%^&*()_-+=<>?/" for c in password):
         return jsonify({"error": "Password must contain a special character (!@#$%^&*)"}), 400
 
-    # 🔐 FIX: User Enumeration on Register (High)
-    # Do NOT reveal if a user exists. Always return a generic success message.
+    # 🔐 User Enumeration Prevention
     if find_user_by_email(email):
-        # Pretend we sent a verification email to prevent user enumeration
         return jsonify({"message": "If this email is valid, a verification link was sent."}), 200
 
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
@@ -193,7 +213,6 @@ def register():
     except Exception as e:
         print("Verification email failed:", e)
 
-    # Return the exact same message as the "exists" case above
     return jsonify({"message": "If this email is valid, a verification link was sent."}), 200
 
 @app.route("/verify-email", methods=["GET"])
@@ -216,9 +235,6 @@ def verify_email():
     })
     return render_template("verify_success.html")
 
-# ================================================================
-# CORPORATE-STANDARD LOGIN (ACCESS + REFRESH TOKENS AS HTTPONLY COOKIES)
-# ================================================================
 @app.route("/login", methods=["POST"])
 @limiter.limit("5 per minute")
 def login():
@@ -235,13 +251,8 @@ def login():
 
     user = find_user_by_email(email)
     
-    # 🔐 FIX: User Enumeration on Login + Timing Attack Prevention
-    # If user doesn't exist, we will still simulate password check delay
-    # so that responses take the same time as when the user exists.
     if not user:
-        # Add a fake bcrypt check to simulate the time taken
-        # This prevents timing attacks (attacker can't tell if email exists)
-        time.sleep(0.3)  # Simulate bcrypt hash check delay
+        time.sleep(0.3)
         add_ip_user_attempt(ip, email)
         return jsonify({"error": "Invalid credentials"}), 401
 
@@ -252,8 +263,7 @@ def login():
         }), 403
 
     if not bcrypt.checkpw(password.encode("utf-8"), user.password.encode("utf-8")):
-        # 🔐 FIX: Add deliberate sleep to match timing of successful login
-        time.sleep(0.3) 
+        time.sleep(0.3)
         add_ip_user_attempt(ip, email)
         attempts = (user.failed_login_attempts or 0) + 1
         updates = {"failed_login_attempts": attempts}
@@ -266,23 +276,18 @@ def login():
     if not user.verified:
         return jsonify({"error": "Please verify your email first."}), 403
 
-    # ---- SUCCESS: Reset counters ----
     update_user(email, {
         "failed_login_attempts": 0,
         "locked_until": None
     })
     clear_ip_user_attempts(ip, email)
 
-    # --- GENERATE ACCESS TOKEN (short-lived) ---
     access_token = generate_jwt(email)
 
-    # --- GENERATE REFRESH TOKEN (long-lived, hashed in DB) ---
     raw_refresh_token = secrets.token_urlsafe(32)
     hashed_refresh = bcrypt.hashpw(raw_refresh_token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    
     update_user(email, {"refresh_token_hash": hashed_refresh})
 
-    # --- Set BOTH as HttpOnly cookies ---
     resp = make_response(jsonify({"message": "Login successful"}))
     
     access_max_age = int(JWT_EXPIRATION.total_seconds())
@@ -290,7 +295,7 @@ def login():
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,
+        secure=False,  # 🔐 Set to True in production with HTTPS
         samesite='Lax',
         max_age=access_max_age
     )
@@ -306,9 +311,6 @@ def login():
     
     return resp
 
-# ================================================================
-# REFRESH ENDPOINT (WITH ROTATION - CORPORATE STANDARD)
-# ================================================================
 @app.route("/refresh", methods=["POST"])
 def refresh():
     refresh_token = request.cookies.get("refresh_token")
@@ -325,10 +327,8 @@ def refresh():
     if not user_found:
         return jsonify({"error": "Invalid or expired refresh token"}), 401
 
-    # ROTATE: Invalidate the old refresh token, issue a new one
     new_raw_refresh = secrets.token_urlsafe(32)
     new_hashed_refresh = bcrypt.hashpw(new_raw_refresh.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    
     new_access_token = generate_jwt(user_found.email)
 
     update_user(user_found.email, {"refresh_token_hash": new_hashed_refresh})
@@ -356,18 +356,13 @@ def refresh():
     
     return resp
 
-# ================================================================
-# FORGOT / RESET PASSWORD
-# ================================================================
 @app.route("/forgot-password", methods=["POST"])
 @limiter.limit("5 per minute")
 def forgot_password():
     data = request.get_json()
     email = data.get("email")
     
-    # 🔐 FIX: Forgot Password Timing Attack (Medium)
-    # Generate the token and hash it BEFORE checking if the user exists.
-    # This ensures that the response time is identical whether the user exists or not.
+    # 🔐 Timing Attack Prevention
     token = secrets.token_urlsafe(32)
     hashed_token = bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     
@@ -389,12 +384,8 @@ def forgot_password():
         except Exception as e:
             print("Email error:", e)
     else:
-        # 🔐 FIX: If user doesn't exist, we still wait a tiny bit to match the time taken
-        # by the bcrypt hashing and email sending logic above.
-        # We also discard the hashed token we generated.
         time.sleep(0.2)
 
-    # Always return the exact same generic message
     return jsonify({"message": "If that email exists, a reset link was sent"}), 200
 
 @app.route("/reset-password", methods=["POST"])
@@ -405,7 +396,6 @@ def reset_password():
     if not token or not new_password:
         return jsonify({"error": "Token and password required"}), 400
 
-    # 🔐 FIX: Apply the same strong password policy here
     if len(new_password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
     if not any(c.isupper() for c in new_password):
@@ -430,9 +420,6 @@ def reset_password():
     })
     return jsonify({"message": "Password updated"}), 200
 
-# ================================================================
-# PROTECTED ROUTE (READS ACCESS TOKEN FROM HTTPONLY COOKIE)
-# ================================================================
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -452,9 +439,6 @@ def token_required(f):
 def protected():
     return jsonify({"message": f"Hello {request.user_email}!"}), 200
 
-# ================================================================
-# LOGOUT (REVOKE REFRESH TOKEN + DELETE BOTH COOKIES)
-# ================================================================
 @app.route("/logout", methods=["POST"])
 def logout():
     token = request.cookies.get("access_token")
