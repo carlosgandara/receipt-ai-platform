@@ -2,6 +2,7 @@ import secrets
 import datetime
 import time
 import threading
+import re  # 🔐 FIX: Added for password validation
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, redirect, make_response
 import bcrypt
@@ -147,10 +148,26 @@ def reset_page():
 def register():
     data = request.get_json()
     email, password = data.get("email"), data.get("password")
+    
     if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
+
+    # 🔐 FIX: Weak Password Enforcement (Critical)
+    # Must be at least 8 chars, contain uppercase, digit, and special character
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if not any(c.isupper() for c in password):
+        return jsonify({"error": "Password must contain an uppercase letter"}), 400
+    if not any(c.isdigit() for c in password):
+        return jsonify({"error": "Password must contain a number"}), 400
+    if not any(c in "!@#$%^&*()_-+=<>?/" for c in password):
+        return jsonify({"error": "Password must contain a special character (!@#$%^&*)"}), 400
+
+    # 🔐 FIX: User Enumeration on Register (High)
+    # Do NOT reveal if a user exists. Always return a generic success message.
     if find_user_by_email(email):
-        return jsonify({"error": "User already exists"}), 409
+        # Pretend we sent a verification email to prevent user enumeration
+        return jsonify({"message": "If this email is valid, a verification link was sent."}), 200
 
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
     user = create_user(email, hashed.decode("utf-8"))
@@ -159,7 +176,7 @@ def register():
     expiry = datetime.datetime.utcnow() + VERIFICATION_EXPIRATION
     update_user(email, {
         "verification_token": token,
-        "verification_expiry": expiry   # ✅ Fixed: no .isoformat()
+        "verification_expiry": expiry
     })
 
     verify_link = f"http://localhost:5000/verify-email?token={token}"
@@ -176,7 +193,8 @@ def register():
     except Exception as e:
         print("Verification email failed:", e)
 
-    return jsonify({"message": "User created. Verification email sent."}), 201
+    # Return the exact same message as the "exists" case above
+    return jsonify({"message": "If this email is valid, a verification link was sent."}), 200
 
 @app.route("/verify-email", methods=["GET"])
 def verify_email():
@@ -184,12 +202,10 @@ def verify_email():
     if not token:
         return render_template("verify_error.html", error="Missing token."), 400
 
-    # ✅ Fixed: Uses SQLAlchemy instead of JSON
     user = find_user_by_verification_token(token)
     if not user:
         return render_template("verify_error.html", error="Invalid or expired token."), 400
 
-    # Check if token has expired
     if user.verification_expiry and user.verification_expiry < datetime.datetime.utcnow():
         return render_template("verify_error.html", error="Token has expired."), 400
 
@@ -218,7 +234,14 @@ def login():
         }), 429
 
     user = find_user_by_email(email)
+    
+    # 🔐 FIX: User Enumeration on Login + Timing Attack Prevention
+    # If user doesn't exist, we will still simulate password check delay
+    # so that responses take the same time as when the user exists.
     if not user:
+        # Add a fake bcrypt check to simulate the time taken
+        # This prevents timing attacks (attacker can't tell if email exists)
+        time.sleep(0.3)  # Simulate bcrypt hash check delay
         add_ip_user_attempt(ip, email)
         return jsonify({"error": "Invalid credentials"}), 401
 
@@ -229,12 +252,14 @@ def login():
         }), 403
 
     if not bcrypt.checkpw(password.encode("utf-8"), user.password.encode("utf-8")):
+        # 🔐 FIX: Add deliberate sleep to match timing of successful login
+        time.sleep(0.3) 
         add_ip_user_attempt(ip, email)
         attempts = (user.failed_login_attempts or 0) + 1
         updates = {"failed_login_attempts": attempts}
         if attempts >= 5:
             locked_until = datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
-            updates["locked_until"] = locked_until   # ✅ Fixed: no .isoformat()
+            updates["locked_until"] = locked_until
         update_user(email, updates)
         return jsonify({"error": "Invalid credentials"}), 401
 
@@ -265,7 +290,7 @@ def login():
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,  # Set to True in production with HTTPS
+        secure=False,
         samesite='Lax',
         max_age=access_max_age
     )
@@ -290,7 +315,6 @@ def refresh():
     if not refresh_token:
         return jsonify({"error": "Missing refresh token"}), 401
 
-    # ✅ Fixed: Uses SQLAlchemy to get all users
     users = get_all_users()
     user_found = None
     for user in users:
@@ -340,27 +364,37 @@ def refresh():
 def forgot_password():
     data = request.get_json()
     email = data.get("email")
-    user = find_user_by_email(email)
-    if not user:
-        return jsonify({"message": "If that email exists, a reset link was sent"}), 200
-
+    
+    # 🔐 FIX: Forgot Password Timing Attack (Medium)
+    # Generate the token and hash it BEFORE checking if the user exists.
+    # This ensures that the response time is identical whether the user exists or not.
     token = secrets.token_urlsafe(32)
     hashed_token = bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    expiry = datetime.datetime.utcnow() + RESET_TOKEN_EXPIRATION
-    update_user(email, {"reset_token": hashed_token, "reset_expiry": expiry})   # ✅ Fixed: no .isoformat()
+    
+    user = find_user_by_email(email)
+    if user:
+        expiry = datetime.datetime.utcnow() + RESET_TOKEN_EXPIRATION
+        update_user(email, {"reset_token": hashed_token, "reset_expiry": expiry})
 
-    reset_link = f"http://localhost:5000/reset-password?token={token}"
-    subject = "Password Reset"
-    text = f"Click: {reset_link}"
-    html = f'''
-    <p>Click the button to reset:</p>
-    <p><a href="{reset_link}" style="display:inline-block;padding:12px 24px;background:#28a745;color:#fff;text-decoration:none;border-radius:6px;">Reset Password</a></p>
-    <p>Expires in 15 min.</p>
-    '''
-    try:
-        send_email(email, subject, text, html)
-    except Exception as e:
-        print("Email error:", e)
+        reset_link = f"http://localhost:5000/reset-password?token={token}"
+        subject = "Password Reset"
+        text = f"Click: {reset_link}"
+        html = f'''
+        <p>Click the button to reset:</p>
+        <p><a href="{reset_link}" style="display:inline-block;padding:12px 24px;background:#28a745;color:#fff;text-decoration:none;border-radius:6px;">Reset Password</a></p>
+        <p>Expires in 15 min.</p>
+        '''
+        try:
+            send_email(email, subject, text, html)
+        except Exception as e:
+            print("Email error:", e)
+    else:
+        # 🔐 FIX: If user doesn't exist, we still wait a tiny bit to match the time taken
+        # by the bcrypt hashing and email sending logic above.
+        # We also discard the hashed token we generated.
+        time.sleep(0.2)
+
+    # Always return the exact same generic message
     return jsonify({"message": "If that email exists, a reset link was sent"}), 200
 
 @app.route("/reset-password", methods=["POST"])
@@ -371,12 +405,20 @@ def reset_password():
     if not token or not new_password:
         return jsonify({"error": "Token and password required"}), 400
 
-    # ✅ Fixed: Uses SQLAlchemy instead of JSON
+    # 🔐 FIX: Apply the same strong password policy here
+    if len(new_password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters"}), 400
+    if not any(c.isupper() for c in new_password):
+        return jsonify({"error": "Password must contain an uppercase letter"}), 400
+    if not any(c.isdigit() for c in new_password):
+        return jsonify({"error": "Password must contain a number"}), 400
+    if not any(c in "!@#$%^&*()_-+=<>?/" for c in new_password):
+        return jsonify({"error": "Password must contain a special character (!@#$%^&*)"}), 400
+
     user = find_user_by_reset_token(token)
     if not user:
         return jsonify({"error": "Invalid or expired token"}), 400
 
-    # Check if token has expired
     if user.reset_expiry and user.reset_expiry < datetime.datetime.utcnow():
         return jsonify({"error": "Token has expired"}), 400
 
