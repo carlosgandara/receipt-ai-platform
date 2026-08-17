@@ -33,3 +33,5 @@ user_db.json
 
 # Logs
 *.log.env
+__pycache__/
+*/__pycache__/
