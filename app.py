@@ -13,7 +13,7 @@ from flask_limiter.util import get_remote_address
 from config import (
     JWT_SECRET, JWT_EXPIRATION, RESET_TOKEN_EXPIRATION, VERIFICATION_EXPIRATION
 )
-from utils.db import find_user_by_email, create_user, update_user, _read_db
+from utils.db import find_user_by_email, create_user, update_user, get_all_users, find_user_by_verification_token, find_user_by_reset_token
 from utils.mail_service import send_email
 
 app = Flask(__name__)
@@ -159,7 +159,7 @@ def register():
     expiry = datetime.datetime.utcnow() + VERIFICATION_EXPIRATION
     update_user(email, {
         "verification_token": token,
-        "verification_expiry": expiry.isoformat()
+        "verification_expiry": expiry   # ✅ Fixed: no .isoformat()
     })
 
     verify_link = f"http://localhost:5000/verify-email?token={token}"
@@ -184,24 +184,16 @@ def verify_email():
     if not token:
         return render_template("verify_error.html", error="Missing token."), 400
 
-    db_data = _read_db()
-    user_found = None
-    for user in db_data["users"]:
-        stored_token = user.get("verification_token")
-        expiry_str = user.get("verification_expiry")
-        if not stored_token or not expiry_str:
-            continue
-        expiry = datetime.datetime.fromisoformat(expiry_str)
-        if expiry < datetime.datetime.utcnow():
-            continue
-        if token == stored_token:
-            user_found = user
-            break
-
-    if not user_found:
+    # ✅ Fixed: Uses SQLAlchemy instead of JSON
+    user = find_user_by_verification_token(token)
+    if not user:
         return render_template("verify_error.html", error="Invalid or expired token."), 400
 
-    update_user(user_found["email"], {
+    # Check if token has expired
+    if user.verification_expiry and user.verification_expiry < datetime.datetime.utcnow():
+        return render_template("verify_error.html", error="Token has expired."), 400
+
+    update_user(user.email, {
         "verified": True,
         "verification_token": None,
         "verification_expiry": None
@@ -230,26 +222,23 @@ def login():
         add_ip_user_attempt(ip, email)
         return jsonify({"error": "Invalid credentials"}), 401
 
-    locked_until_str = user.get("locked_until")
-    if locked_until_str:
-        locked_until = datetime.datetime.fromisoformat(locked_until_str)
-        if locked_until > datetime.datetime.utcnow():
-            remaining = int((locked_until - datetime.datetime.utcnow()).total_seconds() / 60)
-            return jsonify({
-                "error": f"Account locked. Try again in {remaining} minute(s)."
-            }), 403
+    if user.locked_until and user.locked_until > datetime.datetime.utcnow():
+        remaining = int((user.locked_until - datetime.datetime.utcnow()).total_seconds() / 60)
+        return jsonify({
+            "error": f"Account locked. Try again in {remaining} minute(s)."
+        }), 403
 
-    if not bcrypt.checkpw(password.encode("utf-8"), user["password"].encode("utf-8")):
+    if not bcrypt.checkpw(password.encode("utf-8"), user.password.encode("utf-8")):
         add_ip_user_attempt(ip, email)
-        attempts = user.get("failed_login_attempts", 0) + 1
+        attempts = (user.failed_login_attempts or 0) + 1
         updates = {"failed_login_attempts": attempts}
         if attempts >= 5:
             locked_until = datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
-            updates["locked_until"] = locked_until.isoformat()
+            updates["locked_until"] = locked_until   # ✅ Fixed: no .isoformat()
         update_user(email, updates)
         return jsonify({"error": "Invalid credentials"}), 401
 
-    if not user.get("verified", False):
+    if not user.verified:
         return jsonify({"error": "Please verify your email first."}), 403
 
     # ---- SUCCESS: Reset counters ----
@@ -263,7 +252,7 @@ def login():
     access_token = generate_jwt(email)
 
     # --- GENERATE REFRESH TOKEN (long-lived, hashed in DB) ---
-    raw_refresh_token = secrets.token_urlsafe(32)  # 32 bytes = 43 chars, safe for bcrypt
+    raw_refresh_token = secrets.token_urlsafe(32)
     hashed_refresh = bcrypt.hashpw(raw_refresh_token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     
     update_user(email, {"refresh_token_hash": hashed_refresh})
@@ -271,7 +260,6 @@ def login():
     # --- Set BOTH as HttpOnly cookies ---
     resp = make_response(jsonify({"message": "Login successful"}))
     
-    # Access Token cookie (expires same as JWT_EXPIRATION)
     access_max_age = int(JWT_EXPIRATION.total_seconds())
     resp.set_cookie(
         key="access_token",
@@ -282,12 +270,11 @@ def login():
         max_age=access_max_age
     )
     
-    # Refresh Token cookie (30 days)
     resp.set_cookie(
         key="refresh_token",
         value=raw_refresh_token,
         httponly=True,
-        secure=False,  # Set to True in production with HTTPS
+        secure=False,
         samesite='Lax',
         max_age=2592000
     )
@@ -299,32 +286,29 @@ def login():
 # ================================================================
 @app.route("/refresh", methods=["POST"])
 def refresh():
-    # 1. Read the Refresh Token from the HttpOnly cookie
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
         return jsonify({"error": "Missing refresh token"}), 401
 
-    # 2. Find the user who owns this refresh token
-    db_data = _read_db()
+    # ✅ Fixed: Uses SQLAlchemy to get all users
+    users = get_all_users()
     user_found = None
-    for user in db_data["users"]:
-        stored_hash = user.get("refresh_token_hash")
-        if stored_hash and bcrypt.checkpw(refresh_token.encode("utf-8"), stored_hash.encode("utf-8")):
+    for user in users:
+        if user.refresh_token_hash and bcrypt.checkpw(refresh_token.encode("utf-8"), user.refresh_token_hash.encode("utf-8")):
             user_found = user
             break
 
     if not user_found:
         return jsonify({"error": "Invalid or expired refresh token"}), 401
 
-    # 3. ROTATE: Invalidate the old refresh token, issue a new one
+    # ROTATE: Invalidate the old refresh token, issue a new one
     new_raw_refresh = secrets.token_urlsafe(32)
     new_hashed_refresh = bcrypt.hashpw(new_raw_refresh.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     
-    new_access_token = generate_jwt(user_found["email"])
+    new_access_token = generate_jwt(user_found.email)
 
-    update_user(user_found["email"], {"refresh_token_hash": new_hashed_refresh})
+    update_user(user_found.email, {"refresh_token_hash": new_hashed_refresh})
 
-    # 4. Set the new tokens as HttpOnly cookies
     resp = make_response(jsonify({"message": "Tokens refreshed successfully"}))
     
     access_max_age = int(JWT_EXPIRATION.total_seconds())
@@ -363,7 +347,7 @@ def forgot_password():
     token = secrets.token_urlsafe(32)
     hashed_token = bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     expiry = datetime.datetime.utcnow() + RESET_TOKEN_EXPIRATION
-    update_user(email, {"reset_token": hashed_token, "reset_expiry": expiry.isoformat()})
+    update_user(email, {"reset_token": hashed_token, "reset_expiry": expiry})   # ✅ Fixed: no .isoformat()
 
     reset_link = f"http://localhost:5000/reset-password?token={token}"
     subject = "Password Reset"
@@ -387,25 +371,17 @@ def reset_password():
     if not token or not new_password:
         return jsonify({"error": "Token and password required"}), 400
 
-    db_data = _read_db()
-    user_found = None
-    for user in db_data["users"]:
-        stored_hash = user.get("reset_token")
-        expiry_str = user.get("reset_expiry")
-        if not stored_hash or not expiry_str:
-            continue
-        expiry = datetime.datetime.fromisoformat(expiry_str)
-        if expiry < datetime.datetime.utcnow():
-            continue
-        if bcrypt.checkpw(token.encode("utf-8"), stored_hash.encode("utf-8")):
-            user_found = user
-            break
-
-    if not user_found:
+    # ✅ Fixed: Uses SQLAlchemy instead of JSON
+    user = find_user_by_reset_token(token)
+    if not user:
         return jsonify({"error": "Invalid or expired token"}), 400
 
+    # Check if token has expired
+    if user.reset_expiry and user.reset_expiry < datetime.datetime.utcnow():
+        return jsonify({"error": "Token has expired"}), 400
+
     new_hashed = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    update_user(user_found["email"], {
+    update_user(user.email, {
         "password": new_hashed,
         "reset_token": None,
         "reset_expiry": None
