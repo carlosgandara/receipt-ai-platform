@@ -30,13 +30,12 @@ from utils.db import (
     find_user_by_email,
     create_user,
     update_user,
-    find_user_by_verification_token,
+    get_all_users,
     find_user_by_reset_token,
     create_refresh_token,
     find_refresh_token_by_raw,
     revoke_refresh_token,
-    revoke_all_user_tokens,
-    get_active_refresh_tokens
+    revoke_all_user_tokens
 )
 from utils.mail_service import send_email
 
@@ -46,18 +45,16 @@ app.config["SECRET_KEY"] = JWT_SECRET
 # ================================================================
 # 🔐 SECURITY HEADERS (Flask-Talisman) – STRICT CSP
 # ================================================================
-# All inline CSS/JS have been moved to static files,
-# so we can safely remove 'unsafe-inline'
 Talisman(
     app,
-    force_https=False,  # Set to True in production with HTTPS
+    force_https=False,
     frame_options='DENY',
     x_xss_protection=True,
     x_content_type_options='nosniff',
     content_security_policy={
         'default-src': "'self'",
-        'script-src': "'self'",       # ✅ Only scripts from /static/
-        'style-src': "'self'",        # ✅ Only CSS from /static/
+        'script-src': "'self'",
+        'style-src': "'self'",
         'img-src': ["'self'", "data:"],
     }
 )
@@ -80,7 +77,7 @@ def ratelimit_handler(e):
 # ================================================================
 ip_user_attempts = {}
 IP_USER_LIMIT = 5
-IP_USER_WINDOW = 300  # 5 minutes
+IP_USER_WINDOW = 300
 IP_USER_LOCK = threading.Lock()
 
 def get_client_ip():
@@ -186,7 +183,7 @@ def profile_page():
     return render_template("profile.html")
 
 # ================================================================
-# 📝 REGISTER
+# 📝 REGISTER (HASHED VERIFICATION TOKEN)
 # ================================================================
 @app.route("/register", methods=["POST"])
 @limiter.limit("5 per minute")
@@ -213,14 +210,17 @@ def register():
     hashed = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt())
     user = create_user(email, hashed.decode("utf-8"))
 
-    token = secrets.token_urlsafe(32)
+    # 🔐 SECURITY FIX: Hash the verification token before storing it in the database
+    raw_token = secrets.token_urlsafe(32)
+    hashed_token = bcrypt.hashpw(raw_token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
     expiry = datetime.datetime.utcnow() + VERIFICATION_EXPIRATION
+
     update_user(email, {
-        "verification_token": token,
+        "verification_token": hashed_token,  # ✅ Stored as bcrypt hash
         "verification_expiry": expiry
     })
 
-    verify_link = f"{BASE_URL}/verify-email?token={token}"
+    verify_link = f"{BASE_URL}/verify-email?token={raw_token}"  # Send the RAW token in the email
     subject = "Verify your email"
     text = f"Welcome! Click the link to verify: {verify_link}"
     html = f'''
@@ -237,22 +237,37 @@ def register():
     return jsonify({"message": "If this email is valid, a verification link was sent."}), 200
 
 # ================================================================
-# ✅ VERIFY EMAIL
+# ✅ VERIFY EMAIL (BCRYPT VERIFICATION)
 # ================================================================
 @app.route("/verify-email", methods=["GET"])
 def verify_email():
-    token = request.args.get("token")
-    if not token:
+    raw_token = request.args.get("token")
+    if not raw_token:
         return render_template("verify_error.html", error="Missing token."), 400
 
-    user = find_user_by_verification_token(token)
-    if not user:
+    # Get all unverified users with a valid expiry
+    users = get_all_users()
+    user_found = None
+
+    for user in users:
+        # Skip if already verified or no token
+        if user.verified or not user.verification_token or not user.verification_expiry:
+            continue
+
+        # Check if token has expired
+        if user.verification_expiry < datetime.datetime.utcnow():
+            continue
+
+        # 🔐 SECURITY FIX: Verify the raw token against the stored bcrypt hash
+        if bcrypt.checkpw(raw_token.encode("utf-8"), user.verification_token.encode("utf-8")):
+            user_found = user
+            break
+
+    if not user_found:
         return render_template("verify_error.html", error="Invalid or expired token."), 400
 
-    if user.verification_expiry and user.verification_expiry < datetime.datetime.utcnow():
-        return render_template("verify_error.html", error="Token has expired."), 400
-
-    update_user(user.email, {
+    # Mark user as verified and clear the token
+    update_user(user_found.email, {
         "verified": True,
         "verification_token": None,
         "verification_expiry": None
