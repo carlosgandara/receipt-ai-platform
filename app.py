@@ -44,18 +44,20 @@ app = Flask(__name__)
 app.config["SECRET_KEY"] = JWT_SECRET
 
 # ================================================================
-# 🔐 SECURITY HEADERS (Flask-Talisman)
+# 🔐 SECURITY HEADERS (Flask-Talisman) – STRICT CSP
 # ================================================================
+# All inline CSS/JS have been moved to static files,
+# so we can safely remove 'unsafe-inline'
 Talisman(
     app,
-    force_https=False,
+    force_https=False,  # Set to True in production with HTTPS
     frame_options='DENY',
     x_xss_protection=True,
     x_content_type_options='nosniff',
     content_security_policy={
         'default-src': "'self'",
-        'script-src': ["'self'", "'unsafe-inline'"],
-        'style-src': ["'self'", "'unsafe-inline'"],
+        'script-src': "'self'",       # ✅ Only scripts from /static/
+        'style-src': "'self'",        # ✅ Only CSS from /static/
         'img-src': ["'self'", "data:"],
     }
 )
