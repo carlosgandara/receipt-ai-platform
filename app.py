@@ -1,3 +1,10 @@
+import os
+from dotenv import load_dotenv
+
+# Load .env and print the database URL for debugging
+load_dotenv()
+print(f"🔍 app.py DATABASE_URL: {os.getenv('DATABASE_URL')}")
+
 import secrets
 import datetime
 import time
@@ -5,42 +12,59 @@ import threading
 import re
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, redirect, make_response
-from flask_talisman import Talisman  # 🔐 NEW: Security headers
+from flask_talisman import Talisman
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 import bcrypt
 import jwt
 
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
-
 from config import (
-    JWT_SECRET, JWT_EXPIRATION, RESET_TOKEN_EXPIRATION, VERIFICATION_EXPIRATION
+    JWT_SECRET,
+    JWT_EXPIRATION,
+    RESET_TOKEN_EXPIRATION,
+    VERIFICATION_EXPIRATION,
+    COOKIE_SECURE,
+    BASE_URL
 )
-from utils.db import find_user_by_email, create_user, update_user, get_all_users, find_user_by_verification_token, find_user_by_reset_token
+from utils.db import (
+    find_user_by_email,
+    create_user,
+    update_user,
+    find_user_by_verification_token,
+    find_user_by_reset_token,
+    create_refresh_token,
+    find_refresh_token_by_raw,
+    revoke_refresh_token,
+    revoke_all_user_tokens,
+    get_active_refresh_tokens
+)
 from utils.mail_service import send_email
 
 app = Flask(__name__)
 app.config["SECRET_KEY"] = JWT_SECRET
 
 # ================================================================
-# 🔐 SECURITY HEADERS (Flask-Talisman)
+# 🔐 SECURITY HEADERS (Flask-Talisman) – STRICT CSP
 # ================================================================
-# Allow 'unsafe-inline' for development (your HTML has inline JS/CSS)
-# In production, move scripts/styles to external files and tighten this.
+# All inline CSS/JS have been moved to static files,
+# so we can safely remove 'unsafe-inline'
 Talisman(
     app,
-    force_https=False,  # Set to True in production (when you have HTTPS)
-    frame_options='DENY',  # Prevents Clickjacking
-    x_xss_protection=True,  # Prevents reflected XSS
-    x_content_type_options='nosniff',  # Prevents MIME type sniffing
+    force_https=False,  # Set to True in production with HTTPS
+    frame_options='DENY',
+    x_xss_protection=True,
+    x_content_type_options='nosniff',
     content_security_policy={
         'default-src': "'self'",
-        'script-src': ["'self'", "'unsafe-inline'"],  # Needed for inline JS
-        'style-src': ["'self'", "'unsafe-inline'"],   # Needed for inline CSS
+        'script-src': "'self'",       # ✅ Only scripts from /static/
+        'style-src': "'self'",        # ✅ Only CSS from /static/
         'img-src': ["'self'", "data:"],
     }
 )
 
-# ---------- Rate Limiter (IP‑based) ----------
+# ================================================================
+# 📊 RATE LIMITER
+# ================================================================
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
@@ -51,15 +75,15 @@ limiter = Limiter(
 def ratelimit_handler(e):
     return jsonify({"error": "Too many requests. Please slow down."}), 429
 
-# ---------- IP + User combo tracking (in‑memory) ----------
+# ================================================================
+# 🛡️ IP + USER COMBO TRACKING (in-memory)
+# ================================================================
 ip_user_attempts = {}
 IP_USER_LIMIT = 5
-IP_USER_WINDOW = 300
+IP_USER_WINDOW = 300  # 5 minutes
 IP_USER_LOCK = threading.Lock()
 
 def get_client_ip():
-    if request.headers.get('X-Forwarded-For'):
-        return request.headers.get('X-Forwarded-For').split(',')[0].strip()
     return request.remote_addr
 
 def cleanup_old_attempts():
@@ -98,18 +122,18 @@ def clear_ip_user_attempts(ip, email):
         if key in ip_user_attempts:
             del ip_user_attempts[key]
 
-# ---------- Helper functions ----------
+# ================================================================
+# 🔑 JWT HELPER
+# ================================================================
 def generate_jwt(email):
     payload = {"sub": email, "exp": datetime.datetime.utcnow() + JWT_EXPIRATION}
     return jwt.encode(payload, app.config["SECRET_KEY"], algorithm="HS256")
 
 # ================================================================
-# 🩺 HEALTH CHECK (For Load Balancers & Monitoring)
+# 🩺 HEALTH CHECK
 # ================================================================
 @app.route("/health", methods=["GET"])
 def health():
-    """Simple health check endpoint. Returns 200 if the app is running."""
-    # You can optionally check database connectivity here
     return jsonify({
         "status": "healthy",
         "database": "connected",
@@ -117,9 +141,8 @@ def health():
     }), 200
 
 # ================================================================
-# HTML PAGES (Protected via Cookie Check)
+# 🌐 HTML PAGES (Protected via Cookie Check)
 # ================================================================
-
 def is_authenticated():
     token = request.cookies.get("access_token")
     if not token:
@@ -129,18 +152,6 @@ def is_authenticated():
         return True
     except:
         return False
-
-@app.route("/dashboard")
-def dashboard_page():
-    if not is_authenticated():
-        return redirect("/login")
-    return render_template("dashboard.html")
-
-@app.route("/profile")
-def profile_page():
-    if not is_authenticated():
-        return redirect("/login")
-    return render_template("profile.html")
 
 @app.route("/")
 def home():
@@ -162,20 +173,31 @@ def forgot_page():
 def reset_page():
     return render_template("reset_password.html", token=request.args.get("token"))
 
-# ================================================================
-# API Endpoints
-# ================================================================
+@app.route("/dashboard")
+def dashboard_page():
+    if not is_authenticated():
+        return redirect("/login")
+    return render_template("dashboard.html")
 
+@app.route("/profile")
+def profile_page():
+    if not is_authenticated():
+        return redirect("/login")
+    return render_template("profile.html")
+
+# ================================================================
+# 📝 REGISTER
+# ================================================================
 @app.route("/register", methods=["POST"])
 @limiter.limit("5 per minute")
 def register():
     data = request.get_json()
-    email, password = data.get("email"), data.get("password")
-    
+    email = data.get("email")
+    password = data.get("password")
+
     if not email or not password:
         return jsonify({"error": "Email and password required"}), 400
 
-    # 🔐 Weak Password Enforcement
     if len(password) < 8:
         return jsonify({"error": "Password must be at least 8 characters"}), 400
     if not any(c.isupper() for c in password):
@@ -185,7 +207,6 @@ def register():
     if not any(c in "!@#$%^&*()_-+=<>?/" for c in password):
         return jsonify({"error": "Password must contain a special character (!@#$%^&*)"}), 400
 
-    # 🔐 User Enumeration Prevention
     if find_user_by_email(email):
         return jsonify({"message": "If this email is valid, a verification link was sent."}), 200
 
@@ -199,7 +220,7 @@ def register():
         "verification_expiry": expiry
     })
 
-    verify_link = f"http://localhost:5000/verify-email?token={token}"
+    verify_link = f"{BASE_URL}/verify-email?token={token}"
     subject = "Verify your email"
     text = f"Welcome! Click the link to verify: {verify_link}"
     html = f'''
@@ -215,6 +236,9 @@ def register():
 
     return jsonify({"message": "If this email is valid, a verification link was sent."}), 200
 
+# ================================================================
+# ✅ VERIFY EMAIL
+# ================================================================
 @app.route("/verify-email", methods=["GET"])
 def verify_email():
     token = request.args.get("token")
@@ -235,11 +259,15 @@ def verify_email():
     })
     return render_template("verify_success.html")
 
+# ================================================================
+# 🔑 LOGIN
+# ================================================================
 @app.route("/login", methods=["POST"])
 @limiter.limit("5 per minute")
 def login():
     data = request.get_json()
-    email, password = data.get("email"), data.get("password")
+    email = data.get("email")
+    password = data.get("password")
     ip = get_client_ip()
 
     cleanup_old_attempts()
@@ -250,7 +278,7 @@ def login():
         }), 429
 
     user = find_user_by_email(email)
-    
+
     if not user:
         time.sleep(0.3)
         add_ip_user_attempt(ip, email)
@@ -283,99 +311,102 @@ def login():
     clear_ip_user_attempts(ip, email)
 
     access_token = generate_jwt(email)
-
     raw_refresh_token = secrets.token_urlsafe(32)
-    hashed_refresh = bcrypt.hashpw(raw_refresh_token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    update_user(email, {"refresh_token_hash": hashed_refresh})
+    refresh_expiry = datetime.datetime.utcnow() + datetime.timedelta(seconds=2592000)
+
+    create_refresh_token(user.id, raw_refresh_token, refresh_expiry)
 
     resp = make_response(jsonify({"message": "Login successful"}))
-    
+
     access_max_age = int(JWT_EXPIRATION.total_seconds())
     resp.set_cookie(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,  # 🔐 Set to True in production with HTTPS
+        secure=COOKIE_SECURE,
         samesite='Lax',
         max_age=access_max_age
     )
-    
+
     resp.set_cookie(
         key="refresh_token",
         value=raw_refresh_token,
         httponly=True,
-        secure=False,
+        secure=COOKIE_SECURE,
         samesite='Lax',
         max_age=2592000
     )
-    
+
     return resp
 
+# ================================================================
+# 🔄 REFRESH
+# ================================================================
 @app.route("/refresh", methods=["POST"])
 def refresh():
-    refresh_token = request.cookies.get("refresh_token")
-    if not refresh_token:
+    raw_refresh_token = request.cookies.get("refresh_token")
+    if not raw_refresh_token:
         return jsonify({"error": "Missing refresh token"}), 401
 
-    users = get_all_users()
-    user_found = None
-    for user in users:
-        if user.refresh_token_hash and bcrypt.checkpw(refresh_token.encode("utf-8"), user.refresh_token_hash.encode("utf-8")):
-            user_found = user
-            break
-
-    if not user_found:
+    token_record = find_refresh_token_by_raw(raw_refresh_token)
+    if not token_record:
         return jsonify({"error": "Invalid or expired refresh token"}), 401
 
-    new_raw_refresh = secrets.token_urlsafe(32)
-    new_hashed_refresh = bcrypt.hashpw(new_raw_refresh.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    new_access_token = generate_jwt(user_found.email)
+    user = token_record.user
 
-    update_user(user_found.email, {"refresh_token_hash": new_hashed_refresh})
+    revoke_refresh_token(token_record.id)
+
+    new_access_token = generate_jwt(user.email)
+    new_raw_refresh = secrets.token_urlsafe(32)
+    refresh_expiry = datetime.datetime.utcnow() + datetime.timedelta(seconds=2592000)
+
+    create_refresh_token(user.id, new_raw_refresh, refresh_expiry)
 
     resp = make_response(jsonify({"message": "Tokens refreshed successfully"}))
-    
+
     access_max_age = int(JWT_EXPIRATION.total_seconds())
     resp.set_cookie(
         key="access_token",
         value=new_access_token,
         httponly=True,
-        secure=False,
+        secure=COOKIE_SECURE,
         samesite='Lax',
         max_age=access_max_age
     )
-    
+
     resp.set_cookie(
         key="refresh_token",
         value=new_raw_refresh,
         httponly=True,
-        secure=False,
+        secure=COOKIE_SECURE,
         samesite='Lax',
         max_age=2592000
     )
-    
+
     return resp
 
+# ================================================================
+# 📨 FORGOT PASSWORD
+# ================================================================
 @app.route("/forgot-password", methods=["POST"])
 @limiter.limit("5 per minute")
 def forgot_password():
     data = request.get_json()
     email = data.get("email")
-    
-    # 🔐 Timing Attack Prevention
+
     token = secrets.token_urlsafe(32)
     hashed_token = bcrypt.hashpw(token.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    
+
     user = find_user_by_email(email)
     if user:
         expiry = datetime.datetime.utcnow() + RESET_TOKEN_EXPIRATION
         update_user(email, {"reset_token": hashed_token, "reset_expiry": expiry})
 
-        reset_link = f"http://localhost:5000/reset-password?token={token}"
+        reset_link = f"{BASE_URL}/reset-password?token={token}"
         subject = "Password Reset"
-        text = f"Click: {reset_link}"
+        text = f"Click the link to reset your password: {reset_link}"
         html = f'''
-        <p>Click the button to reset:</p>
+        <p>Click the button to reset your password:</p>
         <p><a href="{reset_link}" style="display:inline-block;padding:12px 24px;background:#28a745;color:#fff;text-decoration:none;border-radius:6px;">Reset Password</a></p>
         <p>Expires in 15 min.</p>
         '''
@@ -388,11 +419,16 @@ def forgot_password():
 
     return jsonify({"message": "If that email exists, a reset link was sent"}), 200
 
+# ================================================================
+# 🔐 RESET PASSWORD
+# ================================================================
 @app.route("/reset-password", methods=["POST"])
 @limiter.limit("5 per minute")
 def reset_password():
     data = request.get_json()
-    token, new_password = data.get("token"), data.get("new_password")
+    token = data.get("token")
+    new_password = data.get("new_password")
+
     if not token or not new_password:
         return jsonify({"error": "Token and password required"}), 400
 
@@ -418,8 +454,14 @@ def reset_password():
         "reset_token": None,
         "reset_expiry": None
     })
-    return jsonify({"message": "Password updated"}), 200
 
+    revoke_all_user_tokens(user.id)
+
+    return jsonify({"message": "Password updated. You have been logged out of all devices."}), 200
+
+# ================================================================
+# 🛡️ PROTECTED ROUTE DECORATOR
+# ================================================================
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
@@ -439,28 +481,39 @@ def token_required(f):
 def protected():
     return jsonify({"message": f"Hello {request.user_email}!"}), 200
 
+# ================================================================
+# 🚪 LOGOUT
+# ================================================================
 @app.route("/logout", methods=["POST"])
 def logout():
-    token = request.cookies.get("access_token")
-    email = None
-    if token:
-        try:
-            payload = jwt.decode(token, app.config["SECRET_KEY"], algorithms=["HS256"])
-            email = payload["sub"]
-        except:
-            pass
-    
-    if email:
-        update_user(email, {"refresh_token_hash": None})
-    
+    raw_refresh_token = request.cookies.get("refresh_token")
+    if raw_refresh_token:
+        token_record = find_refresh_token_by_raw(raw_refresh_token)
+        if token_record:
+            revoke_refresh_token(token_record.id)
+
     resp = make_response(jsonify({"message": "Logged out successfully"}))
-    resp.set_cookie("access_token", "", expires=0, httponly=True, secure=False, samesite='Lax')
-    resp.set_cookie("refresh_token", "", expires=0, httponly=True, secure=False, samesite='Lax')
-    
+    resp.set_cookie("access_token", "", expires=0, httponly=True, secure=COOKIE_SECURE, samesite='Lax')
+    resp.set_cookie("refresh_token", "", expires=0, httponly=True, secure=COOKIE_SECURE, samesite='Lax')
     return resp
 
 # ================================================================
-# RUN THE APP
+# 🚪 LOGOUT ALL
+# ================================================================
+@app.route("/logout-all", methods=["POST"])
+@token_required
+def logout_all():
+    user = find_user_by_email(request.user_email)
+    if user:
+        revoke_all_user_tokens(user.id)
+
+    resp = make_response(jsonify({"message": "Logged out of all devices successfully"}))
+    resp.set_cookie("access_token", "", expires=0, httponly=True, secure=COOKIE_SECURE, samesite='Lax')
+    resp.set_cookie("refresh_token", "", expires=0, httponly=True, secure=COOKIE_SECURE, samesite='Lax')
+    return resp
+
+# ================================================================
+# 🚀 RUN THE APP
 # ================================================================
 if __name__ == "__main__":
     app.run(debug=True)

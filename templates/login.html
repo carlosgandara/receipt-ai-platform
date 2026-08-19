@@ -1,54 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <h2>Login</h2>
-<form id="f">
+<form id="login-form">
     <input type="email" id="email" placeholder="Email" required><br>
     <input type="password" id="password" placeholder="Password" required><br>
     <button type="submit">Login</button>
 </form>
 <p id="msg"></p>
 <p><a href="/register">Register</a> | <a href="/forgot-password">Forgot?</a></p>
-
-<style>
-    .success { color: green; font-weight: bold; }
-    .error { color: red; font-weight: bold; }
-</style>
-
-<script>
-document.getElementById('f').onsubmit = async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-    const msg = document.getElementById('msg');
-    
-    msg.textContent = 'Logging in...';
-    msg.className = '';
-
-    try {
-        const res = await fetch('/login', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({email, password})
-        });
-        const data = await res.json();
-
-        if (res.ok) {
-            // ✅ Login successful – cookies are automatically set by the browser
-            msg.className = 'success';
-            msg.textContent = '✅ Login successful! Redirecting...';
-            
-            // Redirect to the protected dashboard
-            setTimeout(() => {
-                window.location.href = '/dashboard';
-            }, 800);
-        } else {
-            msg.className = 'error';
-            msg.textContent = data.error || 'Login failed';
-        }
-    } catch (err) {
-        msg.className = 'error';
-        msg.textContent = 'Network error: ' + err.message;
-    }
-};
-</script>
 {% endblock %}
