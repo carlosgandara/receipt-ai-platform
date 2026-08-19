@@ -12,6 +12,12 @@ EMAIL_PASS = os.getenv("EMAIL_PASS")
 EMAIL_FROM = os.getenv("EMAIL_FROM")
 EMAIL_DISPLAY_NAME = "wolfchad"          # optional
 
+# Security
+COOKIE_SECURE = os.getenv("COOKIE_SECURE", "False").lower() == "true"
+
+# Base URL (for email verification and password reset links)
+BASE_URL = os.getenv("BASE_URL", "http://localhost:5000")  # ✅ Fixed
+
 # JWT
 JWT_SECRET = os.getenv("JWT_SECRET_KEY", "dev-secret")
 
