@@ -20,6 +20,12 @@ Enterprise-grade, production-ready authentication system built with Flask. Featu
 
 🚪 Secure Logout – Revokes refresh token in DB and deletes cookies
 
+🔁 Logout All Devices – Revokes all active sessions with one click
+
+🔐 Change Password – Users can update their password (logs out all devices)
+
+🩺 Health Check – /health endpoint for load balancers and monitoring
+
 📨 Password Reset (expires in 15min)
 
 🖥️ Web UI – AJAX forms with automatic redirects
@@ -27,6 +33,8 @@ Enterprise-grade, production-ready authentication system built with Flask. Featu
 🐘 PostgreSQL Database – Managed via Neon (serverless, scalable, auto-backup)
 
 ⏱️ Rate Limiting – Per-IP and per-IP+User combo protection
+
+🛡️ Strict CSP – No inline scripts/styles (XSS protection)
 
 🛠️ Tech Stack
 
@@ -40,58 +48,66 @@ Database: 🐘 PostgreSQL via Neon (serverless) with SQLAlchemy ORM
 
 Email: ✉️ SMTP (Brevo / Sendinblue / Gmail)
 
-Frontend: 🌐 HTML + vanilla JS (no frameworks required)
+Frontend: 🌐 HTML + vanilla JS (combined in static files)
+
+Security Headers: 🛡️ Flask-Talisman (CSP, HSTS, X-Frame-Options)
 
 📁 Project Structure
 
 python-flask-jwt-auth/
-├── 🚀 app.py # Main Flask app with refresh endpoints
-├── ⚙️ config.py # Configuration + environment variables
-├── 🔒 .env # SMTP + JWT + DATABASE_URL secrets (ignored by Git)
-├── 📄 .gitignore # Ignores .env, pycache, etc.
-├── 📦 requirements.txt # Python dependencies (Flask, SQLAlchemy, psycopg2, etc.)
+├── 🚀 app.py                      # Main Flask app with refresh endpoints
+├── ⚙️ config.py                   # Configuration + environment variables
+├── 🔒 .env                        # SMTP + JWT + DATABASE_URL secrets (ignored by Git)
+├── 📄 .gitignore                  # Ignores .env, __pycache__, etc.
+├── 📦 requirements.txt            # Python dependencies (Flask, SQLAlchemy, psycopg2, etc.)
+├── 📂 static/
+│   ├── 📁 css/
+│   │   └── 🎨 app.css             # Combined styles (loaded once)
+│   └── 📁 js/
+│       └── ⚡ app.js              # Combined JavaScript (loaded once)
 ├── 📂 utils/
-│ ├── 🗃️ db.py # SQLAlchemy + PostgreSQL (Neon)
-│ └── ✉️ mail_service.py # SMTP email sender
+│   ├── 🗃️ db.py                   # SQLAlchemy + PostgreSQL (Neon) with dual-hash refresh tokens
+│   └── ✉️ mail_service.py         # SMTP email sender
 └── 📂 templates/
-├── 🏗️ base.html # Base layout
-├── 🔑 login.html # Login form (redirects to dashboard)
-├── 📝 register.html # Registration form
-├── 🔄 forgot_password.html # Request reset link
-├── 🔐 reset_password.html # Reset password form
-├── 📊 dashboard.html # Protected dashboard (with silent refresh)
-├── 👤 profile.html # Protected profile page
-├── ✅ verify_success.html # Email verified
-└── ❌ verify_error.html # Verification failed
+    ├── 🏗️ base.html               # Base layout (loads static files)
+    ├── 🔑 login.html              # Login form (redirects to dashboard)
+    ├── 📝 register.html           # Registration form
+    ├── 🔄 forgot_password.html    # Request reset link
+    ├── 🔐 reset_password.html     # Reset password form
+    ├── 📊 dashboard.html          # Protected dashboard (with silent refresh)
+    ├── 👤 profile.html            # Protected profile page
+    ├── ✅ verify_success.html     # Email verified
+    └── ❌ verify_error.html       # Verification failed
 
 🚀 Setup
 
-Clone the repository:
-git clone https://github.com/carlosgandara/python-flask-jwt-auth.git
-cd python-flask-jwt-auth
+1. Clone the repository:
+   git clone https://github.com/carlosgandara/python-flask-jwt-auth.git
+   cd python-flask-jwt-auth
 
-Create and activate a virtual environment:
-python -m venv venv
-source venv/bin/activate # Mac/Linux
-venv\Scripts\activate # Windows
+2. Create and activate a virtual environment:
+   python -m venv venv
+   source venv/bin/activate      # Mac/Linux
+   venv\Scripts\activate         # Windows
 
-Install dependencies:
-pip install -r requirements.txt
+3. Install dependencies:
+   pip install -r requirements.txt
 
-Create a .env file (see example below):
-EMAIL_HOST=smtp-relay.brevo.com
-EMAIL_PORT=587
-EMAIL_USER=your-smtp-username
-EMAIL_PASS=your-smtp-password
-EMAIL_FROM=your-email@example.com
-JWT_SECRET_KEY=your-very-long-secret-min-32-chars
-DATABASE_URL=postgresql://user:password@host/database
+4. Create a .env file (see example below):
+   EMAIL_HOST=smtp-relay.brevo.com
+   EMAIL_PORT=587
+   EMAIL_USER=your-smtp-username
+   EMAIL_PASS=your-smtp-password
+   EMAIL_FROM=your-email@example.com
+   JWT_SECRET_KEY=your-very-long-secret-min-32-chars
+   DATABASE_URL=postgresql://user:password@host/database
+   COOKIE_SECURE=False  # Set to True in production with HTTPS
 
-Run the app:
-python app.py
+5. Run the app:
+   python app.py
 
-Open your browser:
-Visit http://localhost:5000/login
+6. Open your browser:
+   Visit http://localhost:5000/login
 
 Note: .env is ignored by Git – your secrets stay safe.
 
@@ -105,28 +121,40 @@ GET /protected – Test route – returns user email (Access Cookie required)
 GET /dashboard – Protected HTML page (Access Cookie required)
 GET /profile – Protected HTML page (Access Cookie required)
 POST /logout – Revoke refresh token + delete cookies (Access Cookie required)
+POST /logout-all – Revoke ALL active refresh tokens (Access Cookie required)
+POST /change-password – Update password (logs out all devices) (Access Cookie required)
 POST /forgot-password – Request password reset link (No auth required)
 POST /reset-password – Reset password with token (No auth required)
+GET /health – Health check for load balancers (No auth required)
 
 🧪 Testing with curl (Windows CMD)
 
 Important: The new flow uses HttpOnly cookies. Use -c to save cookies and -b to send them.
 
-Login (saves cookies to cookies.txt):
-curl -X POST http://localhost:5000/login -H "Content-Type: application/json" -d "{"email":"test@example.com","password":"123456"}" -c cookies.txt -i
+1. Register:
+   curl -X POST http://localhost:5000/register -H "Content-Type: application/json" -d "{\"email\":\"test@example.com\",\"password\":\"StrongP@ssw0rd!\"}"
 
-Access protected endpoint (uses saved cookie):
-curl -X GET http://localhost:5000/protected -b cookies.txt
+2. Login (saves cookies to cookies.txt):
+   curl -X POST http://localhost:5000/login -H "Content-Type: application/json" -d "{\"email\":\"test@example.com\",\"password\":\"StrongP@ssw0rd!\"}" -c cookies.txt -i
 
-Refresh tokens (rotation – kills old token):
-curl -X POST http://localhost:5000/refresh -b cookies.txt -c cookies_new.txt -i
+3. Access protected endpoint (uses saved cookie):
+   curl -X GET http://localhost:5000/protected -b cookies.txt
 
-Prove rotation works (reuse old token – fails):
-curl -X POST http://localhost:5000/refresh -b cookies.txt
-Expected: {"error": "Invalid or expired refresh token"} (replay attack blocked)
+4. Refresh tokens (rotation – kills old token):
+   curl -X POST http://localhost:5000/refresh -b cookies.txt -c cookies_new.txt -i
 
-Logout (revokes token + deletes cookies):
-curl -X POST http://localhost:5000/logout -b cookies.txt -c cookies.txt -i
+5. Prove rotation works (reuse old token – fails):
+   curl -X POST http://localhost:5000/refresh -b cookies.txt
+   Expected: {"error": "Invalid or expired refresh token"} (replay attack blocked)
+
+6. Logout single device:
+   curl -X POST http://localhost:5000/logout -b cookies_new.txt -i
+
+7. Logout all devices:
+   curl -X POST http://localhost:5000/logout-all -b cookies_new.txt -i
+
+8. Health check:
+   curl -X GET http://localhost:5000/health
 
 👨‍💻 Web UI Walkthrough
 
@@ -137,50 +165,44 @@ curl -X POST http://localhost:5000/logout -b cookies.txt -c cookies.txt -i
 👤 Profile – Another protected page (demonstrates cookie persistence).
 🔄 Silent Refresh – If you wait for the Access Token to expire (e.g., 1 min) and click "Refresh Data", the frontend silently calls /refresh and retries – you never see a login screen.
 🚪 Logout – Clears cookies and revokes the refresh token in the database.
+🔁 Logout All – Revokes all active sessions (great for lost devices).
+🔐 Change Password – Update your password; all devices are logged out automatically.
 
 ✉️ Email Configuration
 
 Works with any SMTP provider:
-
-Brevo (Sendinblue) – Recommended (free tier)
-
-Gmail – Use an App Password
-
-SendGrid, Mailgun, etc.
+- Brevo (Sendinblue) – Recommended (free tier)
+- Gmail – Use an App Password
+- SendGrid, Mailgun, etc.
 
 🐘 Neon PostgreSQL Setup
 
-Sign up for Neon at https://neon.tech
-
-Create a new project
-
-Copy your connection string:
-DATABASE_URL=postgresql://user:password@host/database
-
-Add it to your .env file
+1. Sign up for Neon at https://neon.tech
+2. Create a new project
+3. Copy your connection string:
+   DATABASE_URL=postgresql://user:password@host/database
+4. Add it to your .env file
 
 🛡️ Security Highlights
 
 Password storage: bcrypt (12 rounds)
 JWT signing: HMAC-SHA256 with secret key
-Refresh tokens: Hashed in database (bcrypt), revoked on rotation
+Refresh tokens: Dual-hash strategy (SHA256 for index + bcrypt for verification)
+Refresh token rotation: Old tokens revoked on each refresh (replay attack proof)
+Multi-device support: Each login creates a separate refresh token row
 Cookies: HttpOnly (XSS-safe), Secure (HTTPS-only), SameSite=Lax (CSRF protection)
-Verification tokens: Plain storage (can be upgraded to hashed)
+CSP: Strict policy – no inline scripts/styles (XSS protection)
 Rate limiting: Per-IP and per-IP+User combo (in-memory for development)
+Verification tokens: Plain storage (can be upgraded to hashed)
 
 🚀 Future Improvements
 
-Add Redis for rate limiting (production ready)
-
-Change password endpoint
-
-Hashed verification tokens
-
-Unit tests
-
-Admin panel
-
-OAuth2 / OIDC support
+- Add Redis for rate limiting (production ready)
+- Hashed verification tokens
+- Unit tests
+- Admin panel
+- OAuth2 / OIDC support
+- Social login (Google, GitHub)
 
 📄 License
 
@@ -200,4 +222,3 @@ Carlos Gandara
 🔗 GitHub: https://github.com/carlosgandara
 
 ⭐ If you found this useful, please give it a star!
-
