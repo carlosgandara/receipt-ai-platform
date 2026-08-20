@@ -6,13 +6,13 @@ Enterprise-grade, production-ready authentication system built with Flask. Featu
 
 🔐 Register with email + password (bcrypt hashed)
 
-📧 Email verification (expires in 24h)
+📧 Email verification (expires in 24h) – tokens are bcrypt hashed in the database
 
 🍪 HttpOnly Cookies – Tokens are invisible to JavaScript (XSS-safe)
 
 🔑 JWT Access Token (short-lived, stored in HttpOnly cookie)
 
-🔄 Refresh Token Rotation – Long-lived, hashed in DB, invalidated on use (replay attack proof)
+🔄 Refresh Token Rotation – Long-lived, dual-hash (SHA256 + bcrypt) in DB, invalidated on use (replay attack proof)
 
 🛡️ Silent Token Refresh – Frontend catches 401s, calls /refresh automatically, and retries requests
 
@@ -26,7 +26,7 @@ Enterprise-grade, production-ready authentication system built with Flask. Featu
 
 🩺 Health Check – /health endpoint for load balancers and monitoring
 
-📨 Password Reset (expires in 15min)
+📨 Password Reset (expires in 15min) – tokens are bcrypt hashed
 
 🖥️ Web UI – AJAX forms with automatic redirects
 
@@ -193,16 +193,26 @@ Multi-device support: Each login creates a separate refresh token row
 Cookies: HttpOnly (XSS-safe), Secure (HTTPS-only), SameSite=Lax (CSRF protection)
 CSP: Strict policy – no inline scripts/styles (XSS protection)
 Rate limiting: Per-IP and per-IP+User combo (in-memory for development)
-Verification tokens: Plain storage (can be upgraded to hashed)
+Verification tokens: bcrypt hashed (consistent with reset tokens)
+Reset tokens: bcrypt hashed
+
+✅ All 6 Original Security Issues Fixed
+
+1. ✅ Refresh token lookup – Dedicated table with SHA256 index (O(1) lookup)
+2. ✅ Multi-device support – Multiple refresh token rows per user
+3. ✅ X-Forwarded-For spoofing – Uses request.remote_addr directly
+4. ✅ secure=False hardcoded – Environment-driven COOKIE_SECURE
+5. ✅ CSP unsafe-inline – Static files + strict CSP (script-src 'self')
+6. ✅ Verification tokens – Now bcrypt hashed in the database
 
 🚀 Future Improvements
 
-- Add Redis for rate limiting (production ready)
-- Hashed verification tokens
-- Unit tests
+- Add Redis for rate limiting (production ready, shared across servers)
+- Unit tests (pytest)
 - Admin panel
 - OAuth2 / OIDC support
 - Social login (Google, GitHub)
+- User roles and permissions (RBAC)
 
 📄 License
 
