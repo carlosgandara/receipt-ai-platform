@@ -3,25 +3,91 @@
 {% block title %}Dashboard{% endblock %}
 
 {% block content %}
-<div class="nav">
-    <span><strong>🔒 MyApp</strong></span>
-    <a href="/dashboard">Dashboard</a>
-    <a href="/profile">Profile</a>
-    <button onclick="logout()">🚪 Logout</button>
-</div>
+
 
 <h1>📊 Dashboard</h1>
-<p class="status">✅ You are authenticated!</p>
 
-<div class="card">
-    <h3>Your Protected Data (Fetched from API)</h3>
-    <button onclick="fetchProtectedData()">🔄 Refresh Data</button>
-    <pre id="api-response">Loading...</pre>
+<div class="summary">
+    <div class="card"><h3>Total Receipts</h3><div class="value">{{ total_receipts }}</div></div>
+    <div class="card"><h3>Total Spent</h3><div class="value">${{ "%.2f"|format(total_spent) }}</div></div>
+    <div class="card"><h3>Average</h3><div class="value">${{ "%.2f"|format(avg_spent) }}</div></div>
+    {% if max_receipt %}
+    <div class="card"><h3>Max</h3><div class="value">${{ "%.2f"|format(max_receipt.total) }}</div></div>
+    {% endif %}
+    {% if min_receipt %}
+    <div class="card"><h3>Min</h3><div class="value">${{ "%.2f"|format(min_receipt.total) }}</div></div>
+    {% endif %}
 </div>
 
-<div class="card">
-    <h3>💡 How the Refresh Token Works</h3>
-    <p>If your Access Token expires (e.g., after 1 hour), the frontend automatically catches the <code>401</code> error, calls <code>/refresh</code> to get new tokens, and retries the request—all without you noticing.</p>
-    <p><strong>Try it:</strong> Set <code>JWT_EXPIRATION = datetime.timedelta(minutes=1)</code> in your config, log in, wait 1 minute, and click "Refresh Data". You'll see it silently recover.</p>
+<form method="get" class="filters">
+    <div><label>Start Date</label><input type="date" name="start_date" value="{{ start_date }}"></div>
+    <div><label>End Date</label><input type="date" name="end_date" value="{{ end_date }}"></div>
+    <div><label>Category</label>
+        <select name="category">
+            <option value="ALL">All</option>
+            {% set cats = ['FOOD','TRANSPORTATION','HOUSING','HEALTHCARE','ENTERTAINMENT','SHOPPING','EDUCATION','PERSONAL_CARE','TRAVEL','INSURANCE','OTHER'] %}
+            {% for c in cats %}
+                <option value="{{ c }}" {% if selected_category == c %}selected{% endif %}>{{ c }}</option>
+            {% endfor %}
+        </select>
+    </div>
+    <div><label>Merchant</label>
+        <input type="text" name="merchant" value="{{ selected_merchant }}" placeholder="Search...">
+    </div>
+    <div><button type="submit">Filter</button></div>
+</form>
+
+<div class="actions">
+    <a href="/dashboard">Reset Filters</a>
+    <a href="/export{{ '?' + request.query_string.decode() if request.query_string else '' }}">⬇️ Export Filtered Data (JSON)</a>
 </div>
+
+<div class="charts">
+    <div class="chart-container">
+        <canvas id="barChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="lineChart"></canvas>
+    </div>
+</div>
+
+<h2>Receipts</h2>
+<table>
+    <thead>
+        <tr>
+            <th>Date</th>
+            <th>Merchant</th>
+            <th>Total</th>
+            <th>Category</th>
+            <th>Comment</th>
+            <th>Image</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for r in records %}
+        <tr>
+            <td>{{ r.date }}</td>
+            <td>{{ r.merchant }}</td>
+            <td>${{ "%.2f"|format(r.total) }}</td>
+            <td>{{ r.category }}</td>
+            <td>{{ r.comment or '' }}</td>
+            <td>
+                {% if r.image_path %}
+                    <a href="/{{ r.image_path }}" target="_blank">
+                        <img src="/{{ r.image_path }}" class="thumbnail" alt="Receipt">
+                    </a>
+                {% endif %}
+            </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6">No receipts found.</td></tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Hidden element to pass chart data -->
+<span class="hidden-data" id="chart-data">{{ chart_data_json|tojson }}</span>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/js/app.js"></script>
 {% endblock %}

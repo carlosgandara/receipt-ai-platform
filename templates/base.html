@@ -3,15 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Auth{% endblock %}</title>
-    
-    <!-- ✅ Load the combined CSS file (no more inline styles) -->
+    <title>{% block title %}Receipt AI{% endblock %}</title>
+
+    <!-- External CSS – no inline styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-    
-    <!-- ✅ Load the combined JS file (defer ensures it runs after HTML loads) -->
+
+    <!-- External JS – no inline scripts, defer ensures DOM is ready -->
     <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
 </head>
 <body>
+    <!-- Navigation bar – common to all pages -->
+    <div class="nav">
+        <span><strong>📄 Receipt AI</strong></span>
+        <a href="/dashboard">Dashboard</a>
+        <a href="/upload">Upload</a>
+        <!-- ✅ Logout button uses an ID, no inline onclick -->
+        <button id="logout-btn">🚪 Logout</button>
+    </div>
+
+    <!-- Page‑specific content -->
     {% block content %}{% endblock %}
+
+    <!-- Optional toast notification (used by authenticatedFetch) -->
+    <div id="toast"></div>
 </body>
 </html>

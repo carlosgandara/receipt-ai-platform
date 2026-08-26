@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Saved!{% endblock %}
+
+{% block content %}
+
+
+<div class="success-card">
+    <h1>✅ Receipt Saved!</h1>
+    <div class="detail"><strong>Merchant:</strong> {{ record.merchant }}</div>
+    <div class="detail"><strong>Date:</strong> {{ record.date }}</div>
+    <div class="detail"><strong>Total:</strong> ${{ "%.2f"|format(record.total) }}</div>
+    <div class="detail"><strong>Category:</strong> {{ record.category }}</div>
+    {% if record.comment %}
+    <div class="detail"><strong>Comment:</strong> {{ record.comment }}</div>
+    {% endif %}
+</div>
+
+<div class="actions">
+    <a href="/upload">Upload Another</a>
+    <a href="/dashboard" class="secondary">View Dashboard</a>
+</div>
+{% endblock %}
