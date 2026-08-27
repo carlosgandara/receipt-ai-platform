@@ -114,6 +114,9 @@ class Receipt(Base):
     # Image hash for duplicate detection
     image_hash = Column(String(32), nullable=True, index=True)
     
+    # Soft delete – NULL = active, timestamp = deleted
+    deleted_at = Column(DateTime, nullable=True, index=True)
+    
     # Timestamps
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     processed_at = Column(DateTime, nullable=True)
@@ -125,10 +128,11 @@ class Receipt(Base):
         Index('ix_receipts_user_date', 'user_id', 'date'),
         Index('ix_receipts_user_category', 'user_id', 'category'),
         Index('ix_receipts_user_merchant', 'user_id', 'merchant'),
+        Index('ix_receipts_deleted_at', 'deleted_at'),
     )
 
     def __repr__(self):
-        return f"<Receipt(id={self.id}, user_id={self.user_id}, merchant={self.merchant}, total={self.total})>"
+        return f"<Receipt(id={self.id}, user_id={self.user_id}, merchant={self.merchant}, total={self.total}, deleted={self.deleted_at is not None})>"
 
 
 # ---------- Create Tables ----------
@@ -312,7 +316,7 @@ def get_active_refresh_tokens(user_id):
 
 
 # ================================================================
-# RECEIPT CRUD FUNCTIONS
+# RECEIPT CRUD FUNCTIONS (with Soft Delete)
 # ================================================================
 
 def create_receipt(user_id, receipt_data):
@@ -355,14 +359,19 @@ def create_receipt(user_id, receipt_data):
         db.close()
 
 
-def get_user_receipts(user_id, start_date=None, end_date=None, category=None, merchant=None):
+def get_user_receipts(user_id, start_date=None, end_date=None, category=None, merchant=None, include_deleted=False):
     """
     Get all receipts for a user with optional filters.
-    Returns a list of Receipt objects.
+    By default, excludes soft‑deleted receipts.
+    Set include_deleted=True to include them.
     """
     db = SessionLocal()
     try:
         query = db.query(Receipt).filter(Receipt.user_id == user_id)
+        
+        # Soft delete filter – exclude deleted unless explicitly requested
+        if not include_deleted:
+            query = query.filter(Receipt.deleted_at.is_(None))
         
         if start_date:
             try:
@@ -389,17 +398,21 @@ def get_user_receipts(user_id, start_date=None, end_date=None, category=None, me
         db.close()
 
 
-def get_receipt_by_id(receipt_id, user_id):
+def get_receipt_by_id(receipt_id, user_id, include_deleted=False):
     """
     Get a single receipt by ID, ensuring it belongs to the specified user.
-    Returns Receipt object or None.
+    By default, excludes soft‑deleted receipts.
+    Set include_deleted=True to include them.
     """
     db = SessionLocal()
     try:
-        return db.query(Receipt).filter(
+        query = db.query(Receipt).filter(
             Receipt.id == receipt_id,
             Receipt.user_id == user_id
-        ).first()
+        )
+        if not include_deleted:
+            query = query.filter(Receipt.deleted_at.is_(None))
+        return query.first()
     finally:
         db.close()
 
@@ -408,21 +421,71 @@ def get_receipt_by_image_path(image_path, user_id):
     """
     Get a receipt by its image_path, ensuring it belongs to the user.
     Used for ownership verification when serving images.
+    Excludes soft‑deleted receipts.
     """
     db = SessionLocal()
     try:
         return db.query(Receipt).filter(
             Receipt.image_path == image_path,
-            Receipt.user_id == user_id
+            Receipt.user_id == user_id,
+            Receipt.deleted_at.is_(None)   # ignore deleted
         ).first()
     finally:
         db.close()
 
 
-def delete_receipt(receipt_id, user_id):
+def soft_delete_receipt(receipt_id, user_id):
     """
-    Delete a receipt, ensuring it belongs to the user.
-    Also should delete the associated image file – handled in app.py.
+    Soft delete a receipt (set deleted_at timestamp).
+    Returns True if deleted, False if not found or already deleted.
+    """
+    db = SessionLocal()
+    try:
+        receipt = db.query(Receipt).filter(
+            Receipt.id == receipt_id,
+            Receipt.user_id == user_id,
+            Receipt.deleted_at.is_(None)
+        ).first()
+        if not receipt:
+            return False
+        receipt.deleted_at = datetime.datetime.utcnow()
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+
+def restore_receipt(receipt_id, user_id):
+    """
+    Restore a soft‑deleted receipt (set deleted_at = NULL).
+    Returns True if restored, False if not found or not deleted.
+    """
+    db = SessionLocal()
+    try:
+        receipt = db.query(Receipt).filter(
+            Receipt.id == receipt_id,
+            Receipt.user_id == user_id,
+            Receipt.deleted_at.is_not(None)
+        ).first()
+        if not receipt:
+            return False
+        receipt.deleted_at = None
+        db.commit()
+        return True
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+
+def hard_delete_receipt(receipt_id, user_id):
+    """
+    Permanently delete a receipt from the database.
+    Also delete the associated image file – handled in app.py.
     Returns True if deleted, False if not found.
     """
     db = SessionLocal()
@@ -443,12 +506,36 @@ def delete_receipt(receipt_id, user_id):
         db.close()
 
 
+def hard_delete_old_receipts(days=30):
+    """
+    Permanently delete all receipts that were soft‑deleted more than 'days' ago.
+    Returns the number of deleted rows.
+    """
+    db = SessionLocal()
+    try:
+        cutoff = datetime.datetime.utcnow() - datetime.timedelta(days=days)
+        receipts = db.query(Receipt).filter(
+            Receipt.deleted_at <= cutoff
+        ).all()
+        count = len(receipts)
+        for r in receipts:
+            db.delete(r)
+        db.commit()
+        return count
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
+
 def is_duplicate(user_id, merchant, date, total, image_hash=None):
     """
     Check if a receipt already exists for this user.
     Checks by:
     1. Exact image hash (if provided)
     2. Normalized merchant, date, and total (case-insensitive)
+    Excludes soft‑deleted receipts.
     Returns True if duplicate found, False otherwise.
     """
     db = SessionLocal()
@@ -457,7 +544,8 @@ def is_duplicate(user_id, merchant, date, total, image_hash=None):
         if image_hash:
             existing = db.query(Receipt).filter(
                 Receipt.user_id == user_id,
-                Receipt.image_hash == image_hash
+                Receipt.image_hash == image_hash,
+                Receipt.deleted_at.is_(None)   # ignore deleted
             ).first()
             if existing:
                 return True
@@ -466,7 +554,8 @@ def is_duplicate(user_id, merchant, date, total, image_hash=None):
         existing = db.query(Receipt).filter(
             Receipt.user_id == user_id,
             Receipt.date == date,
-            Receipt.total == total
+            Receipt.total == total,
+            Receipt.deleted_at.is_(None)      # ignore deleted
         ).filter(
             func.lower(Receipt.merchant) == merchant.lower()
         ).first()
@@ -476,11 +565,14 @@ def is_duplicate(user_id, merchant, date, total, image_hash=None):
         db.close()
 
 
-def count_user_receipts(user_id):
-    """Count total receipts for a user."""
+def count_user_receipts(user_id, include_deleted=False):
+    """Count total receipts for a user. Excludes soft‑deleted by default."""
     db = SessionLocal()
     try:
-        return db.query(Receipt).filter(Receipt.user_id == user_id).count()
+        query = db.query(Receipt).filter(Receipt.user_id == user_id)
+        if not include_deleted:
+            query = query.filter(Receipt.deleted_at.is_(None))
+        return query.count()
     finally:
         db.close()
 

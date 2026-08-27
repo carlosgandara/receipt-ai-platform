@@ -247,7 +247,6 @@ if (document.getElementById('user-email')) {
             })
             .then(data => {
                 if (debugEl) debugEl.textContent += ` Got: ${JSON.stringify(data)}`;
-                console.log('Status data:', data);
 
                 if (data.status === 'complete') {
                     if (statusEl) {
@@ -369,6 +368,175 @@ if (document.getElementById('user-email')) {
     });
     lineCanvas._chart = lineChart;
     window.lineChartInstance = lineChart;
+})();
+
+
+// ============================================================
+// DASHBOARD – Pagination & Delete
+// ============================================================
+
+(function() {
+    // Only run on the dashboard page
+    const paginationData = document.getElementById('pagination-data');
+    if (!paginationData) return;
+
+    let paginationState;
+    try {
+        paginationState = JSON.parse(paginationData.textContent);
+    } catch (e) {
+        console.error('Failed to parse pagination data', e);
+        return;
+    }
+
+    let currentPage = paginationState.page || 1;
+    let currentLimit = paginationState.limit || 25;
+    let totalPages = paginationState.total_pages || 1;
+
+    // DOM elements
+    const prevBtn = document.getElementById('prev-page');
+    const nextBtn = document.getElementById('next-page');
+    const pageInfo = document.getElementById('page-info');
+    const pageSizeSelect = document.getElementById('page-size-select');
+    const tableBody = document.getElementById('receipts-body');
+    const summaryCards = document.querySelectorAll('.card .value');
+
+    // Helper to fetch a page and update the table
+    function fetchPage(page, limit) {
+        // Build query string – preserve existing filters from the URL
+        const urlParams = new URLSearchParams(window.location.search);
+        urlParams.set('page', page);
+        urlParams.set('limit', limit);
+        urlParams.delete('offset');
+
+        fetch('/dashboard?' + urlParams.toString(), {
+            method: 'GET',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(response => response.json())
+        .then(data => {
+            // Update table rows
+            if (data.records && data.records.length > 0) {
+                let html = '';
+                data.records.forEach(r => {
+                    html += `<tr data-id="${r.id}">
+                        <td>${r.date || ''}</td>
+                        <td>${r.merchant || ''}</td>
+                        <td>$${parseFloat(r.total).toFixed(2)}</td>
+                        <td>${r.category || ''}</td>
+                        <td>${r.comment || ''}</td>
+                        <td>${r.image_path ? `<a href="/${r.image_path}" target="_blank"><img src="/${r.image_path}" class="thumbnail" alt="Receipt"></a>` : ''}</td>
+                        <td><button class="delete-btn" data-id="${r.id}" data-path="${r.image_path || ''}">🗑️</button></td>
+                    </tr>`;
+                });
+                tableBody.innerHTML = html;
+            } else {
+                tableBody.innerHTML = '<tr><td colspan="7">No receipts found.</td></tr>';
+            }
+
+            // Update pagination state
+            currentPage = data.page || page;
+            currentLimit = data.limit || limit;
+            totalPages = data.total_pages || 1;
+
+            // Update pagination controls
+            pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
+            prevBtn.disabled = currentPage <= 1;
+            nextBtn.disabled = currentPage >= totalPages;
+            pageSizeSelect.value = currentLimit;
+
+            // Update summary cards (if returned)
+            if (data.total_receipts !== undefined) {
+                const cards = document.querySelectorAll('.card .value');
+                if (cards.length >= 3) {
+                    cards[0].textContent = data.total_receipts;
+                    cards[1].textContent = '$' + data.total_spent.toFixed(2);
+                    cards[2].textContent = '$' + data.avg_spent.toFixed(2);
+                    if (cards.length > 3 && data.max_receipt) {
+                        cards[3].textContent = '$' + data.max_receipt.total.toFixed(2);
+                    }
+                    if (cards.length > 4 && data.min_receipt) {
+                        cards[4].textContent = '$' + data.min_receipt.total.toFixed(2);
+                    }
+                }
+            }
+
+            // Re‑attach delete event listeners to new buttons
+            attachDeleteListeners();
+
+            // Re‑attach pagination listeners (they are already bound, but we keep them)
+        })
+        .catch(error => console.error('Failed to fetch page:', error));
+    }
+
+    // Delete handler – optimistic delete, ignore 404
+  async function handleDelete(e) {
+    const btn = e.currentTarget;
+    const receiptId = btn.dataset.id;
+    const row = btn.closest('tr');
+    if (!row) return;
+
+    // Check if the row is already removed (in case of double-click)
+    if (!document.contains(row)) {
+        return; // Row already gone – ignore
+    }
+
+    if (!confirm('Are you sure you want to delete this receipt?')) return;
+
+    // Optimistic delete – remove row immediately
+    row.remove();
+
+    try {
+        const response = await fetch(`/receipts/${receiptId}`, {
+            method: 'DELETE',
+            credentials: 'same-origin'
+        });
+
+        if (response.status === 404) {
+            // Already deleted – ignore
+            return;
+        }
+
+        if (!response.ok) {
+            // If delete fails (e.g., 500), reload to show correct state
+            window.location.reload();
+        }
+        // 200 OK – everything is fine
+    } catch (error) {
+        // Network error – reload to recover
+        window.location.reload();
+    }
+}
+    // Attach delete listeners
+    function attachDeleteListeners() {
+        document.querySelectorAll('.delete-btn').forEach(btn => {
+            btn.removeEventListener('click', handleDelete);
+            btn.addEventListener('click', handleDelete);
+        });
+    }
+
+    // Pagination event listeners
+    function bindPaginationEvents() {
+        prevBtn.addEventListener('click', function() {
+            if (currentPage > 1) {
+                fetchPage(currentPage - 1, currentLimit);
+            }
+        });
+
+        nextBtn.addEventListener('click', function() {
+            if (currentPage < totalPages) {
+                fetchPage(currentPage + 1, currentLimit);
+            }
+        });
+
+        pageSizeSelect.addEventListener('change', function() {
+            const newLimit = parseInt(this.value);
+            fetchPage(1, newLimit); // reset to first page
+        });
+    }
+
+    // Initial attach
+    attachDeleteListeners();
+    bindPaginationEvents();
 })();
 
 

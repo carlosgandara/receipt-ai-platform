@@ -40,6 +40,12 @@ body {
     text-decoration: underline;
     padding: 0;
 }
+/* New user email style */
+.user-email {
+    margin-left: auto;
+    color: #666;
+    font-size: 0.9rem;
+}
 
 
 /* ============================================================
@@ -139,6 +145,7 @@ body {
     font-weight: bold;
 }
 
+/* Filters */
 .filters {
     display: flex;
     flex-wrap: wrap;
@@ -165,6 +172,35 @@ body {
     cursor: pointer;
 }
 .filters button:hover {
+    background: #0056b3;
+}
+
+/* New filter-group (used in new dashboard.html) */
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+.filter-group label {
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+.filter-group input,
+.filter-group select {
+    padding: 0.3rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+}
+.filter-group button {
+    padding: 0.3rem 1rem;
+    background: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 0.2rem;
+}
+.filter-group button:hover {
     background: #0056b3;
 }
 
@@ -205,6 +241,10 @@ body {
     background: #5a6268;
 }
 
+.table-wrapper {
+    overflow-x: auto;
+}
+
 table {
     width: 100%;
     border-collapse: collapse;
@@ -230,6 +270,37 @@ th {
 
 .hidden-token, #chart-data {
     display: none;
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-top: 1rem;
+    flex-wrap: wrap;
+}
+.pagination button {
+    padding: 0.3rem 0.8rem;
+    background: #007bff;
+    color: #fff;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+.pagination button:disabled {
+    background: #ccc;
+    cursor: not-allowed;
+}
+.pagination button:not(:disabled):hover {
+    background: #0056b3;
+}
+.page-size-wrapper {
+    margin-left: 1rem;
+}
+.page-size-wrapper select {
+    padding: 0.2rem;
+    border-radius: 4px;
 }
 
 

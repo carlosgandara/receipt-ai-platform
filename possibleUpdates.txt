@@ -1,0 +1,34 @@
+Switch to Celery + Redis for AI.	Medium	Handles 100+ concurrent uploads.
+Move images to S3 (or Cloudinary).	Medium	Scalable storage, no disk limits.
+Add pagination to dashboard table.	Low	Speeds up page load for large datasets.
+Change currency to Decimal or cents.	Low	Avoids rounding errors for accounting.
+Add receipt deletion (soft/hard).	Low	Users can correct mistakes.
+Implement structured logging (e.g., logging + Sentry).	Low	Debug production issues.
+
+
+
+Business‑Feature Gaps
+Missing Feature	Why It's Critical
+Multi‑user / Roles	Business owner + accountant + employees need different access.
+Client/Project tagging	Receipts must be tied to a job or client for billing/reimbursement.
+Mileage tracking	Standard deduction 65.5¢/mile – critical for drivers.
+Tax category mapping	IRS Schedule C categories (Car & Truck, Supplies, Meals, etc.).
+Export to accounting software	QuickBooks, Xero, FreshBooks (CSV with proper columns).
+Custom receipt fields	Business may need PO number, job site, etc.
+Role‑based dashboards	Accountant sees all, employee sees own.
+Automated expense reports	Generate PDF report by date range / project.
+Reimbursement workflow	Employee submits, manager approves, finance pays.
+
+
+
+
+What’s Missing in Your Current Codebase?
+🔧 Technical Gaps (That Will Break at Scale)
+Issue	Impact	Fix
+Threading for AI	Blocks web workers; 10 simultaneous uploads freeze the server.	Replace with Celery + Redis (background queue).
+Local image storage	Cannot scale horizontally; no CDN.	Migrate to AWS S3 (or Cloudinary) – store only URL in DB.
+No pagination	Dashboard loads all receipts; slow for >500 receipts.	Add limit/offset to /dashboard and table.
+Float for money	Currency rounding errors.	Change to integer (cents) or Decimal with 2 decimal places.
+No receipt deletion	User can't delete mistakes.	Add DELETE endpoint and remove image from storage.
+No bulk upload	Users upload one by one; time‑consuming.	Allow ZIP upload or email‑to‑upload (forward receipts).
+No vendor recognition	AI extracts merchant, but no vendor database.	Add a vendor auto‑complete (suggest previous merchants)

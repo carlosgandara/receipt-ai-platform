@@ -1,4 +1,4 @@
-# app.py – Complete Merged Application with Debug Prints in /confirm
+# app.py – Complete Merged Application with Pagination & Soft Delete
 # Combines JWT authentication with Receipt AI.
 # Uses PostgreSQL (via utils.db) for receipts, utils.session for temp storage.
 
@@ -54,7 +54,9 @@ from utils.db import (
     get_user_receipts,
     is_duplicate,
     get_receipt_by_image_path,
-    delete_receipt
+    soft_delete_receipt,      # ✅ Fixed: was delete_receipt
+    restore_receipt,          # optional
+    hard_delete_receipt       # optional
 )
 from utils.mail_service import send_email
 
@@ -95,12 +97,11 @@ Talisman(
     content_security_policy={
         'default-src': "'self'",
         'script-src': ["'self'", "https://cdn.jsdelivr.net"],
-        'style-src': "'self'",
+        'style-src': ["'self'", "'unsafe-inline'"],   # <-- allow inline styles (needed for Chart.js)
         'img-src': ["'self'", "data:"],
-        'connect-src': ["'self'", "https://cdn.jsdelivr.net"],   # ← MUST EXIST
+        'connect-src': ["'self'", "https://cdn.jsdelivr.net"],
     }
 )
-
 # ---------- Rate Limiter ----------
 limiter = Limiter(
     app=app,
@@ -213,9 +214,6 @@ def compute_image_hash(filepath):
 def get_user_id_from_email(email):
     user = find_user_by_email(email)
     return user.id if user else None
-
-# ---------- STATIC FILE SERVING ----------
-# Flask's built-in static serving is available at /static/<path>
 
 # ---------- AUTH ROUTES ----------
 @app.route("/health", methods=["GET"])
@@ -548,6 +546,23 @@ def profile():
     user = find_user_by_email(request.user_email)
     return render_template("profile.html", user=user, user_email=request.user_email)
 
+# ---------- RECEIPT DELETION (SOFT DELETE) ----------
+@app.route('/receipts/<int:receipt_id>', methods=['DELETE'])
+@token_required
+def delete_receipt(receipt_id):
+    user = find_user_by_email(request.user_email)
+    if not user:
+        return jsonify({"error": "User not found"}), 401
+    user_id = user.id
+
+    try:
+        deleted = soft_delete_receipt(receipt_id, user_id)
+        if not deleted:
+            return jsonify({"error": "Receipt not found or already deleted"}), 404
+        return jsonify({"message": "Receipt deleted successfully"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 # ---------- RECEIPT AI ROUTES ----------
 
 # GET /upload – Display upload form
@@ -765,7 +780,6 @@ def duplicate(token):
         os.remove(temp_path)
     return render_template('duplicate.html', token=token)
 
-# ---------- CONFIRM ROUTE WITH DEBUG PRINTS ----------
 @app.route('/confirm', methods=['POST'])
 @token_required
 def confirm():
@@ -773,7 +787,6 @@ def confirm():
     token = request.form.get('token')
     print(f"[DEBUG] Token from form: {token}")
 
-    # Check if file exists
     temp_file = os.path.join('results/temp', f'{token}.json') if token else None
     print(f"[DEBUG] Temp file path: {temp_file}")
     print(f"[DEBUG] Temp file exists? {os.path.exists(temp_file) if temp_file else 'No token'}")
@@ -805,11 +818,7 @@ def confirm():
         flash('Unauthorized.')
         return redirect(url_for('home'))
 
-    # --- BEGIN DEBUG PRINTS FOR FORM VALIDATION ---
     print("[DEBUG] Starting form validation...")
-    # Retrieve form fields (they were already retrieved earlier, but we need them here)
-    # Actually, we need to retrieve them before this point, but they are already retrieved above.
-    # We'll re-fetch them for clarity.
     merchant = request.form.get('merchant', '').strip()
     date = request.form.get('date', '').strip()
     time = request.form.get('time', '').strip()
@@ -889,6 +898,7 @@ def confirm():
     print("[DEBUG] /confirm completed successfully, rendering success page.")
     return render_template('success.html', record=cleaned)
 
+# ---------- DASHBOARD (with Pagination & JSON support) ----------
 @app.route('/dashboard')
 @token_required
 def dashboard():
@@ -897,21 +907,46 @@ def dashboard():
         return redirect(url_for('home'))
     user_id = user.id
 
+    # Get filter parameters
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     category = request.args.get('category')
     merchant = request.args.get('merchant')
 
-    records = get_user_receipts(
+    # Get pagination parameters
+    page = int(request.args.get('page', 1))
+    limit = int(request.args.get('limit', 25))
+    if page < 1:
+        page = 1
+    if limit < 1:
+        limit = 25
+    if limit > 100:
+        limit = 100  # max page size
+
+    # Fetch all filtered receipts (we need total count and stats)
+    all_filtered = get_user_receipts(
         user_id,
         start_date=start_date,
         end_date=end_date,
         category=category,
-        merchant=merchant
+        merchant=merchant,
+        include_deleted=False  # exclude soft-deleted
     )
 
+    # Compute summary stats from all filtered (not paginated)
+    total_receipts = len(all_filtered)
+    total_spent = sum(r.total for r in all_filtered) if all_filtered else 0
+    avg_spent = total_spent / total_receipts if total_receipts else 0
+    max_receipt = max(all_filtered, key=lambda x: x.total) if all_filtered else None
+    min_receipt = min(all_filtered, key=lambda x: x.total) if all_filtered else None
+
+    # Paginate the list
+    offset = (page - 1) * limit
+    paginated = all_filtered[offset:offset + limit]
+
+    # Convert to dicts for template/JSON
     records_list = []
-    for r in records:
+    for r in paginated:
         records_list.append({
             'id': r.id,
             'merchant': r.merchant,
@@ -924,32 +959,28 @@ def dashboard():
             'created_at': r.created_at
         })
 
+    total_pages = (total_receipts + limit - 1) // limit if total_receipts > 0 else 1
+
+    # Chart data (from all filtered, not paginated)
     from collections import defaultdict
     cat_totals = defaultdict(float)
-    for r in records_list:
-        cat = r.get('category', 'OTHER')
-        cat_totals[cat] += r.get('total', 0)
+    for r in all_filtered:
+        cat = r.category or 'OTHER'
+        cat_totals[cat] += r.total
 
     weekly = defaultdict(float)
-    for r in records_list:
-        if r.get('date'):
+    for r in all_filtered:
+        if r.date:
             try:
-                dt = datetime.datetime.strptime(r['date'], '%Y-%m-%d')
+                dt = datetime.datetime.strptime(r.date, '%Y-%m-%d')
                 week_start = dt - datetime.timedelta(days=dt.weekday())
                 key = week_start.strftime('%Y-%m-%d')
-                weekly[key] += r.get('total', 0)
+                weekly[key] += r.total
             except:
                 pass
-
     sorted_weekly = sorted(weekly.items())
     dates = [item[0] for item in sorted_weekly]
     weekly_totals = [item[1] for item in sorted_weekly]
-
-    total_receipts = len(records_list)
-    total_spent = sum(r.get('total', 0) for r in records_list)
-    avg_spent = total_spent / total_receipts if total_receipts else 0
-    max_receipt = max(records_list, key=lambda x: x.get('total', 0)) if records_list else None
-    min_receipt = min(records_list, key=lambda x: x.get('total', 0)) if records_list else None
 
     chart_data = {
         'categories': list(cat_totals.keys()),
@@ -958,23 +989,46 @@ def dashboard():
         'weekly_totals': weekly_totals
     }
 
-    all_user_records = get_user_receipts(user_id)
-    merchants = sorted(set(r.merchant for r in all_user_records if r.merchant))
+    # Get unique merchants for filter dropdown (from all receipts, excluding deleted)
+    all_user_receipts = get_user_receipts(user_id, include_deleted=False)
+    merchants = sorted(set(r.merchant for r in all_user_receipts if r.merchant))
 
-    return render_template('dashboard.html',
-                           records=records_list,
-                           chart_data_json=chart_data,
-                           total_receipts=total_receipts,
-                           total_spent=total_spent,
-                           avg_spent=avg_spent,
-                           max_receipt=max_receipt,
-                           min_receipt=min_receipt,
-                           merchants=merchants,
-                           selected_category=category or 'ALL',
-                           selected_merchant=merchant or '',
-                           start_date=start_date or '',
-                           end_date=end_date or '',
-                           user_email=request.user_email)
+    # Prepare template/response data
+    template_data = {
+        'records': records_list,
+        'chart_data_json': chart_data,
+        'total_receipts': total_receipts,
+        'total_spent': total_spent,
+        'avg_spent': avg_spent,
+        'max_receipt': max_receipt,
+        'min_receipt': min_receipt,
+        'merchants': merchants,
+        'selected_category': category or 'ALL',
+        'selected_merchant': merchant or '',
+        'start_date': start_date or '',
+        'end_date': end_date or '',
+        'user_email': request.user_email,
+        'page': page,
+        'limit': limit,
+        'total_pages': total_pages
+    }
+
+    # If AJAX request (X-Requested-With header), return JSON
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        return jsonify({
+            'records': records_list,
+            'total_receipts': total_receipts,
+            'total_spent': total_spent,
+            'avg_spent': avg_spent,
+            'max_receipt': max_receipt,
+            'min_receipt': min_receipt,
+            'page': page,
+            'limit': limit,
+            'total_pages': total_pages
+        })
+
+    # Otherwise render HTML
+    return render_template('dashboard.html', **template_data)
 
 @app.route('/export')
 @token_required
@@ -989,12 +1043,14 @@ def export_json():
     category = request.args.get('category')
     merchant = request.args.get('merchant')
 
+    # Exclude soft-deleted receipts
     records = get_user_receipts(
         user_id,
         start_date=start_date,
         end_date=end_date,
         category=category,
-        merchant=merchant
+        merchant=merchant,
+        include_deleted=False
     )
 
     data = [{
@@ -1021,7 +1077,6 @@ def serve_image(filename):
         return "Forbidden", 403
     user_id = user.id
 
-    # Normalize path to forward slashes for consistent comparison
     full_path = os.path.join(IMAGE_FOLDER, filename).replace('\\', '/')
     receipt = get_receipt_by_image_path(full_path, user_id)
     if not receipt:
