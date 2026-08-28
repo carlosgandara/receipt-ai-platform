@@ -3,7 +3,7 @@ import smtplib
 import email.utils
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from config import EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM, EMAIL_DISPLAY_NAME
+from app.config import EMAIL_HOST, EMAIL_PORT, EMAIL_USER, EMAIL_PASS, EMAIL_FROM, EMAIL_DISPLAY_NAME
 
 def send_email(to, subject, text, html=None):
     from_formatted = f"{EMAIL_DISPLAY_NAME} <{EMAIL_FROM}>"

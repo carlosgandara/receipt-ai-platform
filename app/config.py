@@ -31,6 +31,21 @@ IMAGE_FOLDER = os.getenv("IMAGE_FOLDER", "images")
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 MAX_CONTENT_LENGTH = 16 * 1024 * 1024   # 16 MB
 
+# ---------- Neon Object Storage (S3-compatible) ----------
+AWS_ENDPOINT_URL_S3 = os.getenv("AWS_ENDPOINT_URL_S3")
+AWS_ACCESS_KEY_ID = os.getenv("AWS_ACCESS_KEY_ID")
+AWS_SECRET_ACCESS_KEY = os.getenv("AWS_SECRET_ACCESS_KEY")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
+S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
+
+# Check if S3 is configured
+USE_S3 = all([AWS_ENDPOINT_URL_S3, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, S3_BUCKET_NAME])
+if USE_S3:
+    print(f"✅ Neon Object Storage configured – bucket: {S3_BUCKET_NAME}")
+else:
+    print("⚠️ Neon Object Storage credentials not found. Images will be stored locally.")
+
+    
 # ---------- Database ----------
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:

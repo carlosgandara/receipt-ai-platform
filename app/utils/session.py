@@ -60,11 +60,15 @@ def normalize_date(date_str):
             continue
     return date_str
 
-def get_submission_id(record):
+def get_submission_id(record, user_id=None):
+    """
+    Generate a unique ID for a receipt based on date, merchant, total, and user_id.
+    Including user_id prevents global uniqueness conflicts.
+    """
     date = record.get('date', '')
     merchant = record.get('merchant', '')
     total = record.get('total', '')
-    raw = f"{date}_{merchant}_{total}".lower().strip()
+    raw = f"{date}_{merchant}_{total}_{user_id}".lower().strip() if user_id else f"{date}_{merchant}_{total}".lower().strip()
     return hashlib.md5(raw.encode('utf-8')).hexdigest()
 
 def cleanup_expired_temp_files():

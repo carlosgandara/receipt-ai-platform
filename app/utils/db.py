@@ -94,10 +94,9 @@ class Receipt(Base):
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     
     # Core receipt data
-    submission_id = Column(String(32), nullable=False, index=True)   # no global unique
+    receipt_hash = Column(String(32), nullable=False, index=True)   # no global unique
     image_name = Column(String(255), nullable=False)
-    image_path = Column(String(512), nullable=False)
-    
+    image_path = Column(String(512), nullable=True)   # allow NULL for S3-stored images    
     merchant = Column(String(255), nullable=True)
     date = Column(String(10), nullable=True)   # YYYY-MM-DD
     time = Column(String(20), nullable=True)
@@ -114,8 +113,11 @@ class Receipt(Base):
     # Image hash for duplicate detection
     image_hash = Column(String(32), nullable=True, index=True)
     
-    # Soft delete – NULL = active, timestamp = deleted
-    deleted_at = Column(DateTime, nullable=True, index=True)
+    # S3 object key – index defined in __table_args__
+    s3_key = Column(String(512), nullable=True)
+    
+    # Soft delete – index defined in __table_args__ (index=True removed)
+    deleted_at = Column(DateTime, nullable=True)
     
     # Timestamps
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -129,6 +131,8 @@ class Receipt(Base):
         Index('ix_receipts_user_category', 'user_id', 'category'),
         Index('ix_receipts_user_merchant', 'user_id', 'merchant'),
         Index('ix_receipts_deleted_at', 'deleted_at'),
+        Index('ix_receipts_s3_key', 's3_key'),
+        # No unique constraint on receipt_hash – duplicates are handled by is_duplicate()
     )
 
     def __repr__(self):
@@ -316,48 +320,35 @@ def get_active_refresh_tokens(user_id):
 
 
 # ================================================================
-# RECEIPT CRUD FUNCTIONS (with Soft Delete)
+# RECEIPT CRUD FUNCTIONS (with Soft Delete & S3 key)
 # ================================================================
 
 def create_receipt(user_id, receipt_data):
-    """
-    Insert a new receipt for a user.
-    receipt_data is a dict containing all fields except user_id and created_at.
-    Raises ValueError if submission_id already exists (duplicate).
-    """
     db = SessionLocal()
-    try:
-        receipt = Receipt(
-            user_id=user_id,
-            submission_id=receipt_data.get('submission_id'),
-            image_name=receipt_data.get('image_name'),
-            image_path=receipt_data.get('image_path'),
-            merchant=receipt_data.get('merchant'),
-            date=receipt_data.get('date'),
-            time=receipt_data.get('time'),
-            subtotal=receipt_data.get('subtotal'),
-            tax=receipt_data.get('tax'),
-            total=receipt_data.get('total'),
-            payment_method=receipt_data.get('payment_method'),
-            category=receipt_data.get('category'),
-            comment=receipt_data.get('comment'),
-            raw_description=receipt_data.get('raw_description'),
-            image_hash=receipt_data.get('image_hash'),
-            processed_at=datetime.datetime.utcnow()
-        )
-        db.add(receipt)
-        db.commit()
-        db.refresh(receipt)
-        return receipt
-    except IntegrityError as e:
-        db.rollback()
-        raise ValueError("Duplicate receipt: submission_id already exists") from e
-    except Exception as e:
-        db.rollback()
-        raise e
-    finally:
-        db.close()
-
+    receipt = Receipt(
+        user_id=user_id,
+        receipt_hash=receipt_data.get('receipt_hash'),
+        image_name=receipt_data.get('image_name'),
+        image_path=receipt_data.get('image_path'),
+        merchant=receipt_data.get('merchant'),
+        date=receipt_data.get('date'),
+        time=receipt_data.get('time'),
+        subtotal=receipt_data.get('subtotal'),
+        tax=receipt_data.get('tax'),
+        total=receipt_data.get('total'),
+        payment_method=receipt_data.get('payment_method'),
+        category=receipt_data.get('category'),
+        comment=receipt_data.get('comment'),
+        raw_description=receipt_data.get('raw_description'),
+        image_hash=receipt_data.get('image_hash'),
+        s3_key=receipt_data.get('s3_key'),
+        processed_at=datetime.datetime.utcnow()
+    )
+    db.add(receipt)
+    db.commit()
+    db.refresh(receipt)
+    db.close()
+    return receipt
 
 def get_user_receipts(user_id, start_date=None, end_date=None, category=None, merchant=None, include_deleted=False):
     """
@@ -428,7 +419,7 @@ def get_receipt_by_image_path(image_path, user_id):
         return db.query(Receipt).filter(
             Receipt.image_path == image_path,
             Receipt.user_id == user_id,
-            Receipt.deleted_at.is_(None)   # ignore deleted
+            Receipt.deleted_at.is_(None)
         ).first()
     finally:
         db.close()
@@ -545,7 +536,7 @@ def is_duplicate(user_id, merchant, date, total, image_hash=None):
             existing = db.query(Receipt).filter(
                 Receipt.user_id == user_id,
                 Receipt.image_hash == image_hash,
-                Receipt.deleted_at.is_(None)   # ignore deleted
+                Receipt.deleted_at.is_(None)
             ).first()
             if existing:
                 return True
@@ -555,7 +546,7 @@ def is_duplicate(user_id, merchant, date, total, image_hash=None):
             Receipt.user_id == user_id,
             Receipt.date == date,
             Receipt.total == total,
-            Receipt.deleted_at.is_(None)      # ignore deleted
+            Receipt.deleted_at.is_(None)
         ).filter(
             func.lower(Receipt.merchant) == merchant.lower()
         ).first()

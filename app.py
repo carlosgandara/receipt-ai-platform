@@ -1,6 +1,6 @@
-# app.py – Complete Merged Application with Pagination & Soft Delete
+# app.py – Complete Merged Application with Pagination, Soft Delete & S3 Storage
 # Combines JWT authentication with Receipt AI.
-# Uses PostgreSQL (via utils.db) for receipts, utils.session for temp storage.
+# Uses PostgreSQL (via utils.db) for receipts, Neon Object Storage for images.
 
 import os
 import json
@@ -22,9 +22,11 @@ import bcrypt
 import jwt
 from werkzeug.utils import secure_filename
 from PIL import Image
+import boto3
+from botocore.config import Config
 
 # ---------- Configuration ----------
-from config import (
+from app.config import (
     JWT_SECRET,
     JWT_EXPIRATION,
     RESET_TOKEN_EXPIRATION,
@@ -35,11 +37,17 @@ from config import (
     IMAGE_FOLDER,
     ALLOWED_EXTENSIONS,
     MAX_CONTENT_LENGTH,
-    PORT
+    PORT,
+    AWS_ENDPOINT_URL_S3,
+    AWS_ACCESS_KEY_ID,
+    AWS_SECRET_ACCESS_KEY,
+    AWS_REGION,
+    S3_BUCKET_NAME,
+    USE_S3
 )
 
 # ---------- Database and Helpers ----------
-from utils.db import (
+from app.utils.db import (
     find_user_by_email,
     create_user,
     update_user,
@@ -54,14 +62,15 @@ from utils.db import (
     get_user_receipts,
     is_duplicate,
     get_receipt_by_image_path,
-    soft_delete_receipt,      # ✅ Fixed: was delete_receipt
-    restore_receipt,          # optional
-    hard_delete_receipt       # optional
+    soft_delete_receipt,
+    restore_receipt,
+    hard_delete_receipt,
+    get_receipt_by_id
 )
-from utils.mail_service import send_email
+from services.mail_service import send_email
 
 # ---------- Session and Helper Functions ----------
-from utils.session import (
+from app.utils.session import (
     generate_token,
     save_temp_data,
     load_temp_data,
@@ -73,16 +82,75 @@ from utils.session import (
 )
 
 # ---------- AI Service ----------
-from ai_service import process_image
+from services.ai_service import process_image
+
+# ---------- S3 Client ----------
+if USE_S3:
+    s3_client = boto3.client(
+        's3',
+        endpoint_url=AWS_ENDPOINT_URL_S3,
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        region_name=AWS_REGION,
+        config=Config(signature_version='s3v4')
+    )
+    print("✅ S3 client initialized (Neon Object Storage)")
+else:
+    s3_client = None
+    print("⚠️ S3 client not initialized – images will be stored locally.")
+
+# ---------- Helper: Upload to S3 ----------
+def upload_to_s3(file_bytes, user_id, filename, content_type='image/jpeg'):
+    """Upload compressed image to Neon Object Storage and return the S3 key."""
+    if not USE_S3 or s3_client is None:
+        raise RuntimeError("S3 not configured")
+    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+    object_key = f"user_{user_id}/{timestamp}_{filename}"
+    try:
+        s3_client.upload_fileobj(
+            file_bytes,
+            S3_BUCKET_NAME,
+            object_key,
+            ExtraArgs={'ContentType': content_type}  # private bucket – no ACL
+        )
+        return object_key
+    except Exception as e:
+        print(f"[ERROR] S3 upload failed: {e}")
+        raise
+
+def delete_from_s3(object_key):
+    """Delete an image from S3 by its object key."""
+    if not USE_S3 or s3_client is None:
+        return False
+    try:
+        s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=object_key)
+        return True
+    except Exception as e:
+        print(f"[ERROR] S3 delete failed: {e}")
+        return False
+
+def generate_presigned_url(object_key, expires_in=3600):
+    """Generate a presigned URL for private S3 access."""
+    if not USE_S3 or s3_client is None:
+        return None
+    try:
+        return s3_client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': S3_BUCKET_NAME, 'Key': object_key},
+            ExpiresIn=expires_in
+        )
+    except Exception as e:
+        print(f"[ERROR] Presigned URL generation failed: {e}")
+        return None
 
 # ---------- Flask App ----------
 app = Flask(__name__)
 app.config["SECRET_KEY"] = JWT_SECRET
 app.config['MAX_CONTENT_LENGTH'] = MAX_CONTENT_LENGTH
 
-# Ensure required folders exist
+# Ensure required folders exist (only for temp and local fallback)
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-os.makedirs(IMAGE_FOLDER, exist_ok=True)
+os.makedirs(IMAGE_FOLDER, exist_ok=True)  # fallback if S3 fails
 os.makedirs('results/temp', exist_ok=True)
 os.makedirs('static/css', exist_ok=True)
 os.makedirs('static/js', exist_ok=True)
@@ -97,11 +165,12 @@ Talisman(
     content_security_policy={
         'default-src': "'self'",
         'script-src': ["'self'", "https://cdn.jsdelivr.net"],
-        'style-src': ["'self'", "'unsafe-inline'"],   # <-- allow inline styles (needed for Chart.js)
+        'style-src': ["'self'", "'unsafe-inline'"],   # allow inline styles (needed for Chart.js)
         'img-src': ["'self'", "data:"],
         'connect-src': ["'self'", "https://cdn.jsdelivr.net"],
     }
 )
+
 # ---------- Rate Limiter ----------
 limiter = Limiter(
     app=app,
@@ -182,30 +251,22 @@ def token_required(f):
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def compress_image(filepath, output_folder=None, max_size=(1200, 1200), quality=85):
-    if output_folder is None:
-        output_folder = UPLOAD_FOLDER
-    os.makedirs(output_folder, exist_ok=True)
+def compress_image(filepath, max_size=(1200, 1200), quality=85):
+    """Compress an image and return the bytes and the file extension."""
     try:
         img = Image.open(filepath)
         img.thumbnail(max_size)
         if img.mode in ('RGBA', 'LA', 'P'):
             img = img.convert('RGB')
-        base, _ = os.path.splitext(os.path.basename(filepath))
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        new_filename = f"{base}_{timestamp}.jpg"
-        new_path = os.path.join(output_folder, new_filename)
-        img.save(new_path, 'JPEG', quality=quality, optimize=True)
-        return new_path
+        from io import BytesIO
+        img_bytes = BytesIO()
+        img.save(img_bytes, 'JPEG', quality=quality, optimize=True)
+        img_bytes.seek(0)
+        return img_bytes, 'jpg'
     except Exception as e:
         print(f"[DEBUG] Compression fallback: {e}")
-        base, ext = os.path.splitext(os.path.basename(filepath))
-        timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-        new_filename = f"{base}_{timestamp}{ext}"
-        new_path = os.path.join(output_folder, new_filename)
-        with open(filepath, 'rb') as src, open(new_path, 'wb') as dst:
-            dst.write(src.read())
-        return new_path
+        with open(filepath, 'rb') as f:
+            return BytesIO(f.read()), 'original'
 
 def compute_image_hash(filepath):
     with open(filepath, 'rb') as f:
@@ -546,7 +607,7 @@ def profile():
     user = find_user_by_email(request.user_email)
     return render_template("profile.html", user=user, user_email=request.user_email)
 
-# ---------- RECEIPT DELETION (SOFT DELETE) ----------
+# ---------- RECEIPT DELETION (SOFT DELETE + S3 DELETE) ----------
 @app.route('/receipts/<int:receipt_id>', methods=['DELETE'])
 @token_required
 def delete_receipt(receipt_id):
@@ -556,6 +617,11 @@ def delete_receipt(receipt_id):
     user_id = user.id
 
     try:
+        # First, fetch the receipt to get the S3 key
+        receipt = get_receipt_by_id(receipt_id, user_id, include_deleted=False)
+        if receipt and receipt.s3_key:
+            delete_from_s3(receipt.s3_key)
+
         deleted = soft_delete_receipt(receipt_id, user_id)
         if not deleted:
             return jsonify({"error": "Receipt not found or already deleted"}), 404
@@ -601,16 +667,19 @@ def upload():
     file.save(temp_original)
     print(f"[DEBUG] Original saved: {temp_original}")
 
-    compressed_temp = compress_image(temp_original, output_folder=UPLOAD_FOLDER)
+    # Compress image and get bytes
+    compressed_bytes, ext = compress_image(temp_original)
+    image_hash = compute_image_hash(temp_original)
     if os.path.exists(temp_original):
         os.remove(temp_original)
-    print(f"[DEBUG] Compressed temp: {compressed_temp}")
-
-    image_hash = compute_image_hash(compressed_temp)
-    print(f"[DEBUG] Image hash: {image_hash}")
 
     token = generate_token()
     print(f"[DEBUG] Generated token: {token}")
+
+    compressed_temp = os.path.join(UPLOAD_FOLDER, f"compressed_{token}.jpg")
+    with open(compressed_temp, 'wb') as f:
+        f.write(compressed_bytes.getvalue())
+    print(f"[DEBUG] Compressed temp: {compressed_temp}")
 
     temp_data = {
         'token': token,
@@ -641,17 +710,13 @@ def upload():
             print(f"[DEBUG] Step 4: AI returned in {elapsed:.2f}s")
             print(f"[DEBUG] AI extracted: {extracted}")
 
-            extracted['image_path'] = None
-
-            if extracted.get('date'):
-                extracted['date'] = normalize_date(extracted['date'])
-                print(f"[DEBUG] Normalized date: {extracted['date']}")
-
+            # Extract data
             merchant = extracted.get('merchant', '')
             date = extracted.get('date', '')
             total = extracted.get('total', 0)
             print(f"[DEBUG] Step 5: Merchant='{merchant}', Date='{date}', Total={total}")
 
+            # Check duplicate (per user)
             print("[DEBUG] Step 6: Checking duplicate...")
             try:
                 duplicate = is_duplicate(user_id, merchant, date, total, image_hash)
@@ -671,36 +736,71 @@ def upload():
                 print("[DEBUG] DUPLICATE FOUND. Deleting temp file.")
                 if os.path.exists(compressed_temp):
                     os.remove(compressed_temp)
-                    print("[DEBUG] Temp file deleted.")
                 temp = load_temp_data(token)
                 if temp:
                     temp['status'] = 'duplicate'
                     save_temp_data(token, temp)
-                    print("[DEBUG] Status set to duplicate")
                 return
 
-            print("[DEBUG] NOT DUPLICATE. Moving to permanent storage.")
-            user_folder = os.path.join(IMAGE_FOLDER, str(user_id))
-            os.makedirs(user_folder, exist_ok=True)
-            base, _ = os.path.splitext(os.path.basename(compressed_temp))
-            timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
-            final_filename = f"{base}_{timestamp}.jpg"
-            final_path = os.path.join(user_folder, final_filename)
-            print(f"[DEBUG] Moving to {final_path}")
-            os.rename(compressed_temp, final_path)
+            # NOT duplicate – upload to S3
+            print("[DEBUG] NOT DUPLICATE. Uploading to S3...")
+            if USE_S3 and s3_client is not None:
+                with open(compressed_temp, 'rb') as f:
+                    upload_bytes = f.read()
+                from io import BytesIO
+                upload_stream = BytesIO(upload_bytes)
+                try:
+                    s3_key = upload_to_s3(upload_stream, user_id, filename)
+                    print(f"[DEBUG] Uploaded to S3 with key: {s3_key}")
+                    if os.path.exists(compressed_temp):
+                        os.remove(compressed_temp)
+                except Exception as e:
+                    print(f"[ERROR] S3 upload failed: {e}")
+                    # Fallback to local storage
+                    user_folder = os.path.join(IMAGE_FOLDER, str(user_id))
+                    os.makedirs(user_folder, exist_ok=True)
+                    base, _ = os.path.splitext(os.path.basename(compressed_temp))
+                    timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                    final_filename = f"{base}_{timestamp}.jpg"
+                    final_path = os.path.join(user_folder, final_filename)
+                    os.rename(compressed_temp, final_path)
+                    final_path = final_path.replace('\\', '/')
+                    s3_key = None
+                    extracted['image_path'] = final_path
+                    print(f"[DEBUG] S3 failed, stored locally: {final_path}")
+            else:
+                # Fallback to local storage
+                user_folder = os.path.join(IMAGE_FOLDER, str(user_id))
+                os.makedirs(user_folder, exist_ok=True)
+                base, _ = os.path.splitext(os.path.basename(compressed_temp))
+                timestamp = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
+                final_filename = f"{base}_{timestamp}.jpg"
+                final_path = os.path.join(user_folder, final_filename)
+                os.rename(compressed_temp, final_path)
+                final_path = final_path.replace('\\', '/')
+                s3_key = None
+                extracted['image_path'] = final_path
+                print(f"[DEBUG] Stored locally: {final_path}")
 
-            # ---- FIX: Normalize path to forward slashes ----
-            final_path = final_path.replace('\\', '/')
-            print(f"[DEBUG] Normalized path: {final_path}")
+            # Update extracted with s3_key and image_path
+            if s3_key:
+                extracted['s3_key'] = s3_key
+                extracted['image_path'] = None
+            else:
+                extracted['image_path'] = final_path
+                extracted['s3_key'] = None
 
-            print("[DEBUG] File moved.")
-            extracted['image_path'] = final_path
+            if extracted.get('date'):
+                extracted['date'] = normalize_date(extracted['date'])
 
             temp = load_temp_data(token)
             if temp:
                 temp['status'] = 'complete'
                 temp['extracted'] = extracted
-                temp['image_path'] = final_path
+                if s3_key:
+                    temp['s3_key'] = s3_key
+                else:
+                    temp['image_path'] = final_path
                 save_temp_data(token, temp)
                 print("[DEBUG] Status set to complete")
             else:
@@ -712,22 +812,17 @@ def upload():
             traceback.print_exc()
             if os.path.exists(compressed_temp):
                 os.remove(compressed_temp)
-                print("[DEBUG] Temp file deleted due to error.")
             temp = load_temp_data(token)
             if temp:
                 temp['status'] = 'error'
                 temp['error'] = str(e)
                 save_temp_data(token, temp)
-                print("[DEBUG] Status set to error")
-            else:
-                print("[DEBUG] Could not set error status: temp missing")
 
     thread = threading.Thread(target=process_ai)
     thread.daemon = True
     thread.start()
     print("[DEBUG] Thread started, redirecting to processing page")
 
-    # FIX: Redirect to processing page so browser actually shows it
     return redirect(url_for('processing', token=token))
 
 @app.route('/status/<token>')
@@ -762,6 +857,10 @@ def review(token):
         return redirect(url_for('processing', token=token))
 
     data = temp.get('extracted', {})
+    if data.get('s3_key'):
+        data['image_url'] = generate_presigned_url(data['s3_key'])
+    else:
+        data['image_url'] = data.get('image_path')
     return render_template('review.html', token=token, data=data)
 
 @app.route('/processing/<token>')
@@ -780,6 +879,7 @@ def duplicate(token):
         os.remove(temp_path)
     return render_template('duplicate.html', token=token)
 
+# ---------- CONFIRM ROUTE (FIXED: uses receipt_hash) ----------
 @app.route('/confirm', methods=['POST'])
 @token_required
 def confirm():
@@ -828,10 +928,12 @@ def confirm():
     payment_method = request.form.get('payment_method', '').strip()
     category = request.form.get('category', '').strip()
     comment = request.form.get('comment', '').strip()
-    image_path = temp_data.get('image_path')
+
+    extracted = temp_data.get('extracted', {})
+    s3_key = temp_data.get('s3_key') or extracted.get('s3_key')
+    image_path = temp_data.get('image_path') or extracted.get('image_path')
     image_name = temp_data.get('image_name')
     image_hash = temp_data.get('image_hash')
-    extracted = temp_data.get('extracted', {})
 
     print(f"[DEBUG] total_str = '{total_str}'")
     if not total_str:
@@ -864,11 +966,14 @@ def confirm():
         return redirect(url_for('home'))
 
     print("[DEBUG] Duplicate not found. Building cleaned data...")
-    submission_id = get_submission_id({'date': date, 'merchant': merchant, 'total': total})
+    # Generate the hash using user_id to make it unique per user
+    receipt_hash = get_submission_id({'date': date, 'merchant': merchant, 'total': total}, user_id)
+    # ----------------------------------------------------------------
     cleaned = {
-        'submission_id': submission_id,
+        'receipt_hash': receipt_hash,          # <-- use the new column name
         'image_name': image_name,
         'image_path': image_path,
+        's3_key': s3_key,
         'merchant': merchant or None,
         'date': date or None,
         'time': time or None,
@@ -897,8 +1002,7 @@ def confirm():
     delete_temp_data(token)
     print("[DEBUG] /confirm completed successfully, rendering success page.")
     return render_template('success.html', record=cleaned)
-
-# ---------- DASHBOARD (with Pagination & JSON support) ----------
+# ---------- DASHBOARD (with Pagination & JSON support, and presigned URLs) ----------
 @app.route('/dashboard')
 @token_required
 def dashboard():
@@ -907,13 +1011,11 @@ def dashboard():
         return redirect(url_for('home'))
     user_id = user.id
 
-    # Get filter parameters
     start_date = request.args.get('start_date')
     end_date = request.args.get('end_date')
     category = request.args.get('category')
     merchant = request.args.get('merchant')
 
-    # Get pagination parameters
     page = int(request.args.get('page', 1))
     limit = int(request.args.get('limit', 25))
     if page < 1:
@@ -921,32 +1023,33 @@ def dashboard():
     if limit < 1:
         limit = 25
     if limit > 100:
-        limit = 100  # max page size
+        limit = 100
 
-    # Fetch all filtered receipts (we need total count and stats)
     all_filtered = get_user_receipts(
         user_id,
         start_date=start_date,
         end_date=end_date,
         category=category,
         merchant=merchant,
-        include_deleted=False  # exclude soft-deleted
+        include_deleted=False
     )
 
-    # Compute summary stats from all filtered (not paginated)
     total_receipts = len(all_filtered)
     total_spent = sum(r.total for r in all_filtered) if all_filtered else 0
     avg_spent = total_spent / total_receipts if total_receipts else 0
     max_receipt = max(all_filtered, key=lambda x: x.total) if all_filtered else None
     min_receipt = min(all_filtered, key=lambda x: x.total) if all_filtered else None
 
-    # Paginate the list
     offset = (page - 1) * limit
     paginated = all_filtered[offset:offset + limit]
 
-    # Convert to dicts for template/JSON
     records_list = []
     for r in paginated:
+        image_url = None
+        if r.s3_key:
+            image_url = generate_presigned_url(r.s3_key)
+        else:
+            image_url = r.image_path
         records_list.append({
             'id': r.id,
             'merchant': r.merchant,
@@ -955,13 +1058,12 @@ def dashboard():
             'total': r.total,
             'category': r.category,
             'comment': r.comment,
-            'image_path': r.image_path,
+            'image_path': image_url,
             'created_at': r.created_at
         })
 
     total_pages = (total_receipts + limit - 1) // limit if total_receipts > 0 else 1
 
-    # Chart data (from all filtered, not paginated)
     from collections import defaultdict
     cat_totals = defaultdict(float)
     for r in all_filtered:
@@ -989,11 +1091,9 @@ def dashboard():
         'weekly_totals': weekly_totals
     }
 
-    # Get unique merchants for filter dropdown (from all receipts, excluding deleted)
     all_user_receipts = get_user_receipts(user_id, include_deleted=False)
     merchants = sorted(set(r.merchant for r in all_user_receipts if r.merchant))
 
-    # Prepare template/response data
     template_data = {
         'records': records_list,
         'chart_data_json': chart_data,
@@ -1013,10 +1113,27 @@ def dashboard():
         'total_pages': total_pages
     }
 
-    # If AJAX request (X-Requested-With header), return JSON
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest':
+        json_records = []
+        for r in paginated:
+            image_url = None
+            if r.s3_key:
+                image_url = generate_presigned_url(r.s3_key)
+            else:
+                image_url = r.image_path
+            json_records.append({
+                'id': r.id,
+                'merchant': r.merchant,
+                'date': r.date,
+                'time': r.time,
+                'total': r.total,
+                'category': r.category,
+                'comment': r.comment,
+                'image_path': image_url,
+                'created_at': r.created_at
+            })
         return jsonify({
-            'records': records_list,
+            'records': json_records,
             'total_receipts': total_receipts,
             'total_spent': total_spent,
             'avg_spent': avg_spent,
@@ -1027,7 +1144,6 @@ def dashboard():
             'total_pages': total_pages
         })
 
-    # Otherwise render HTML
     return render_template('dashboard.html', **template_data)
 
 @app.route('/export')
@@ -1043,7 +1159,6 @@ def export_json():
     category = request.args.get('category')
     merchant = request.args.get('merchant')
 
-    # Exclude soft-deleted receipts
     records = get_user_receipts(
         user_id,
         start_date=start_date,
@@ -1069,6 +1184,7 @@ def export_json():
 
     return jsonify(data)
 
+# ---------- IMAGE SERVING (fallback for local images) ----------
 @app.route('/images/<path:filename>')
 @token_required
 def serve_image(filename):
