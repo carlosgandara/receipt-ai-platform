@@ -3,6 +3,11 @@ from sqlalchemy import engine_from_config, pool
 from alembic import context
 import sys
 from pathlib import Path
+import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file (located one level above migrations/)
+load_dotenv()
 
 # Add project root to sys.path so that 'app' is importable
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -18,6 +23,14 @@ except Exception as e:
     target_metadata = None
 
 config = context.config
+
+# ---- NEW: Set database URL from .env ----
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    raise ValueError("DATABASE_URL not set in .env file")
+config.set_main_option('sqlalchemy.url', database_url)
+# -----------------------------------------
+
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

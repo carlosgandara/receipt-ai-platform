@@ -90,8 +90,8 @@
                 <td>{{ r.comment or '' }}</td>
                 <td>
                     {% if r.image_path %}
-                        <a href="/{{ r.image_path }}" target="_blank">
-                            <img src="/{{ r.image_path }}" class="thumbnail" alt="Receipt">
+                        <a href="{{ r.image_path }}" target="_blank">
+                            <img src="{{ r.image_path }}" class="thumbnail" alt="Receipt">
                         </a>
                     {% endif %}
                 </td>
