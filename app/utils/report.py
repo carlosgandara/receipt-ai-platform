@@ -8,7 +8,7 @@ import io
 
 from app.utils.db import get_user_receipts
 
-def generate_report_pdf(user_id, month_str, year_str):
+def generate_report_pdf(user_id, month_str, year_str, user_email):
     """
     Generate a PDF report for a given month and year.
     month_str: '2026-08'
@@ -101,7 +101,7 @@ def generate_report_pdf(user_id, month_str, year_str):
 
     # Build context for the template
     context = {
-        'user_email': 'user@example.com',  # we'll pass later
+        'user_email': user_email,        
         'generated_date': datetime.datetime.now().strftime('%B %d, %Y'),
         'month_year': start_date.strftime('%B %Y'),
         'month_total': month_total,

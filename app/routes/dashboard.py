@@ -214,7 +214,6 @@ def export_json():
 
     return jsonify(data)
 
-
 @dashboard_bp.route('/report')
 @token_required
 def download_report():
@@ -230,7 +229,8 @@ def download_report():
         month = now.strftime('%Y-%m')
         year = str(now.year)
 
-    pdf_data = generate_report_pdf(user.id, month, year)
+    # Generate PDF (outside the if block)
+    pdf_data = generate_report_pdf(user.id, month, year, user.email)
     return send_file(
         io.BytesIO(pdf_data),
         as_attachment=True,
