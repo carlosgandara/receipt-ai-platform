@@ -32,3 +32,6 @@ Float for money	Currency rounding errors.	Change to integer (cents) or Decimal w
 No receipt deletion	User can't delete mistakes.	Add DELETE endpoint and remove image from storage.
 No bulk upload	Users upload one by one; time‑consuming.	Allow ZIP upload or email‑to‑upload (forward receipts).
 No vendor recognition	AI extracts merchant, but no vendor database.	Add a vendor auto‑complete (suggest previous merchants)
+
+
+-remove images localstorage

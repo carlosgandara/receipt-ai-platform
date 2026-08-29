@@ -54,7 +54,7 @@
     <a href="/dashboard">Reset Filters</a>
     <a href="/export{{ '?' + request.query_string.decode() if request.query_string else '' }}">⬇️ Export Filtered Data (JSON)</a>
 </div>
-
+<a href="/report?month={{ start_date[:7] }}&year={{ start_date[:4] }}" class="btn">📄 Download PDF Report</a>
 <!-- Charts -->
 <div class="charts">
     <div class="chart-container">

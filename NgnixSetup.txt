@@ -124,3 +124,90 @@ pkill -f gunicorn
 cd /var/www/receipt-ai-new
 source venv/bin/activate
 gunicorn --workers 3 app:app -b 127.0.0.1:5001 --daemon  Restart server
+
+
+sudo tail -20 /var/log/nginx/error.log
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+File: /etc/systemd/system/receipt-ai.service
+This is the systemd service unit file that defines how Gunicorn should run.
+
+ini
+[Unit]
+Description=Receipt AI Platform (Gunicorn)
+After=network.target
+
+[Service]
+User=despacio
+Group=despacio
+WorkingDirectory=/var/www/receipt-ai-new
+Environment="PATH=/var/www/receipt-ai-new/venv/bin"
+EnvironmentFile=/var/www/receipt-ai-new/.env
+ExecStart=/var/www/receipt-ai-new/venv/bin/gunicorn --workers 3 app:app -b 127.0.0.1:5001
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+Directives explained
+Directive	Purpose
+[Unit]	Metadata section.
+Description	Human-readable name shown in systemctl status.
+After=network.target	Start only after the network is up.
+[Service]	Defines how to run the process.
+User=despacio	Run as user despacio (not root).
+Group=despacio	Run with group despacio.
+WorkingDirectory	Change to this directory before executing.
+Environment="PATH=..."	Sets PATH so Gunicorn finds Python and its packages.
+EnvironmentFile	Loads environment variables from the .env file.
+ExecStart	The command to start the service.
+Restart=always	Automatically restart if the process exits (even on failure).
+RestartSec=5	Wait 5 seconds before restarting.
+[Install]	Installation section.
+WantedBy=multi-user.target	Start when the system reaches multi-user runlevel (i.e., normal boot).
+The error we fixed
+Originally, the EnvironmentFile line had an inline comment:
+
+text
+EnvironmentFile=/var/www/receipt-ai-new/.env   # <-- ADD THIS
+Systemd does not support inline comments – it treats the entire line as the file path, including the # <-- ADD THIS part. So it tried to load a file named:
+
+text
+/var/www/receipt-ai-new/.env   # <-- ADD THIS
+Which does not exist → error: Failed to load environment files: No such file or directory.
+
+Fix: Removed the comment, leaving only:
+
+text
+EnvironmentFile=/var/www/receipt-ai-new/.env

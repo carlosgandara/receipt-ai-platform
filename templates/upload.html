@@ -1,12 +1,14 @@
+
+<!-- templates/upload.html -->
+
 {% extends "base.html" %}
 
 {% block title %}Upload Receipt{% endblock %}
 
 {% block content %}
 
-
 <h1>📄 Upload a Receipt</h1>
-<p>Upload an image and let AI extract the data.</p>
+<p>Take a photo or choose an existing image.</p>
 
 {% with messages = get_flashed_messages() %}
     {% if messages %}
@@ -14,9 +16,60 @@
     {% endif %}
 {% endwith %}
 
-<form action="/upload" method="post" enctype="multipart/form-data" class="upload-box">
-    <p>Choose an image (PNG, JPG, JPEG, GIF)</p>
-<input type="file" name="image" accept="image/*" capture="environment" required>    <br><br>
-    <button type="submit">Upload & Process</button>
+<form action="/upload" method="post" enctype="multipart/form-data">
+
+    <!-- Camera -->
+    <label for="cameraInput"
+           style="display:inline-block;
+                  padding:10px 20px;
+                  background:#007bff;
+                  color:white;
+                  border-radius:5px;
+                  cursor:pointer;">
+        📷 Take Photo
+    </label>
+
+    <input
+        type="file"
+        name="image"
+        id="cameraInput"
+        accept="image/*"
+        capture="environment"
+        style="display:none;"
+    >
+
+
+
+    <br><br>
+
+    <!-- Gallery -->
+    <label for="galleryInput"
+           style="display:inline-block;
+                  padding:10px 20px;
+                  background:#28a745;
+                  color:white;
+                  border-radius:5px;
+                  cursor:pointer;">
+        📁 Choose from Gallery
+    </label>
+
+
+
+    <input
+        type="file"
+        name="image"
+        id="galleryInput"
+        accept="image/*"
+        style="display:none;"
+    >
+
+    <br><br>
+
+    <button type="submit">
+        Upload & Process
+    </button>
+
 </form>
+
 {% endblock %}
+

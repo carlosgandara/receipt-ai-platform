@@ -4,6 +4,11 @@
 import datetime
 from collections import defaultdict
 
+
+from flask import send_file
+import io
+from app.utils.report import generate_report_pdf   # <-- new import
+
 from flask import (
     Blueprint, request, jsonify, render_template, redirect, url_for, flash
 )
@@ -208,3 +213,27 @@ def export_json():
     } for r in records]
 
     return jsonify(data)
+
+
+@dashboard_bp.route('/report')
+@token_required
+def download_report():
+    user = find_user_by_email(request.user_email)
+    if not user:
+        return jsonify({"error": "User not found"}), 401
+
+    month = request.args.get('month')
+    year = request.args.get('year')
+    if not month or not year:
+        # fallback to current month
+        now = datetime.datetime.now()
+        month = now.strftime('%Y-%m')
+        year = str(now.year)
+
+    pdf_data = generate_report_pdf(user.id, month, year)
+    return send_file(
+        io.BytesIO(pdf_data),
+        as_attachment=True,
+        download_name=f"report-{month}.pdf",
+        mimetype='application/pdf'
+    )
