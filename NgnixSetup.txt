@@ -1,0 +1,126 @@
+Nginx Configuration for Receipt AI Platform
+Overview
+Nginx acts as a reverse proxy between the internet and your Flask application (Gunicorn). It handles:
+
+SSL termination (HTTPS)
+
+Static file serving (CSS, JS, images)
+
+Load balancing (if multiple Gunicorn workers)
+
+Redirecting HTTP to HTTPS
+
+The Flask app runs on Gunicorn listening on 127.0.0.1:5001 (internal port). Nginx proxies all incoming requests to that port, except for static files which Nginx serves directly for performance.
+
+Current Nginx Configuration (Snippet)
+nginx
+server {
+    listen 443 ssl;
+    listen [::]:443 ssl;
+    server_name despacio.ai www.despacio.ai;
+    client_max_body_size 50M;   # <-- Add this line
+
+    ssl_certificate /etc/letsencrypt/live/despacio.ai/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/despacio.ai/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    # Proxy all dynamic requests to Gunicorn
+    location / {
+        proxy_pass http://127.0.0.1:5001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_buffering off;
+    }
+
+    # Serve static files directly
+    location /static/ {
+        alias /var/www/receipt-ai-new/static/;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+    }
+
+    # Health check endpoint
+    location /health {
+        proxy_pass http://127.0.0.1:5001/health;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+    }
+}
+
+# HTTP → HTTPS redirect
+server {
+    listen 80;
+    listen [::]:80;
+    server_name despacio.ai www.despacio.ai;
+    return 301 https://$server_name$request_uri;
+}
+Key Points
+Section	Purpose
+SSL certificate	Uses Let's Encrypt for valid HTTPS. Renewal managed by Certbot.
+location /	Proxies all requests (except static) to Gunicorn on port 5001. Headers like X-Forwarded-For preserve client IP. proxy_buffering off prevents buffering of uploads.
+location /static/	Serves CSS, JS, images directly from disk, reducing load on Flask. Cache headers improve performance.
+location /health	Separate proxy for health checks; can be used by monitoring tools.
+HTTP server block	Redirects all HTTP traffic to HTTPS, ensuring secure connections.
+Why Port 5001?
+Originally the app used port 5000, but another process was occupying it.
+
+To avoid conflicts, we switched to port 5001.
+
+The Gunicorn command: gunicorn --workers 3 app:app -b 127.0.0.1:5001 --daemon
+
+If port 5000 becomes free in the future, you can change proxy_pass back to :5000.
+
+Important Notes for a New AI / Developer
+Update Nginx after any changes
+
+Edit the config file (/etc/nginx/sites-enabled/despacio.ai).
+
+Test syntax: sudo nginx -t
+
+Reload: sudo systemctl reload nginx
+
+Static files
+
+Place all CSS, JS, images in /var/www/receipt-ai-new/static/.
+
+The alias path must match the actual directory.
+
+Environment variables
+
+The Flask app reads .env in the project root.
+
+Ensure DATABASE_URL, SECRET_KEY, JWT_SECRET_KEY, and S3/Novita credentials are set.
+
+Gunicorn management
+
+Start: gunicorn --workers 3 app:app -b 127.0.0.1:5001 --daemon
+
+Stop: pkill -f gunicorn
+
+For auto-start on reboot, consider creating a systemd service (not yet configured).
+
+Debugging
+
+Nginx error log: /var/log/nginx/error.log
+
+Gunicorn logs: run without --daemon to see stdout.
+
+This setup ensures your Flask app is securely exposed to the internet with optimal static file handling.
+
+
+
+
+useful commands
+
+
+pkill -f gunicorn
+cd /var/www/receipt-ai-new
+source venv/bin/activate
+gunicorn --workers 3 app:app -b 127.0.0.1:5001 --daemon  Restart server

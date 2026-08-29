@@ -6,4 +6,10 @@ flask-limiter==3.5.0
 requests==2.31.0
 psycopg2-binary==2.9.9
 SQLAlchemy==2.0.22
-flask-talisman==1.1.0   # 🔐 NEW
+flask-talisman==1.1.0
+Pillow
+portalocker
+openai
+novita-client
+boto3
+gunicorn
