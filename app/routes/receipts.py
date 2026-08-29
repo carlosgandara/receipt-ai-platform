@@ -83,16 +83,16 @@ def upload():
 
     if 'image' not in request.files:
         flash('No file part')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     file = request.files['image']
     if file.filename == '':
         flash('No file selected')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     if not allowed_file(file.filename):
         flash('File type not allowed. Use PNG, JPG, JPEG, or GIF.')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     filename = secure_filename(file.filename)
     temp_original = os.path.join(UPLOAD_FOLDER, filename)
@@ -269,11 +269,11 @@ def review(token):
     temp = load_temp_data(token)
     if not temp:
         flash('Session expired. Please upload again.')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     if temp.get('user_id') != get_user_id_from_email(request.user_email):
         flash('Unauthorized.')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     if temp.get('status') != 'complete':
         flash('AI processing not complete yet.')
@@ -299,7 +299,7 @@ def duplicate(token):
     temp = load_temp_data(token)
     if not temp:
         flash('Session expired.')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
     temp_path = temp.get('temp_image_path')
     if temp_path and os.path.exists(temp_path):
         os.remove(temp_path)
@@ -321,28 +321,28 @@ def confirm():
     if not user:
         print("[DEBUG] User not found")
         flash('User not found.')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
     user_id = user.id
     print(f"[DEBUG] Authenticated user ID: {user_id}")
 
     if not token or not validate_token(token):
         print(f"[DEBUG] Token validation failed (token: {token})")
         flash('Session expired. Please upload again.')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     temp_data = load_temp_data(token)
     print(f"[DEBUG] Temp data loaded: {temp_data}")
     if not temp_data:
         print("[DEBUG] Temp data is None")
         flash('Session data not found.')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     stored_user_id = temp_data.get('user_id')
     print(f"[DEBUG] Stored user_id in temp: {stored_user_id}")
     if stored_user_id != user_id:
         print(f"[DEBUG] User ID mismatch: stored={stored_user_id}, current={user_id}")
         flash('Unauthorized.')
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     print("[DEBUG] Starting form validation...")
     merchant = request.form.get('merchant', '').strip()
@@ -389,7 +389,7 @@ def confirm():
         if image_path and os.path.exists(image_path):
             os.remove(image_path)
         delete_temp_data(token)
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     print("[DEBUG] Duplicate not found. Building cleaned data...")
     receipt_hash = get_submission_id({'date': date, 'merchant': merchant, 'total': total}, user_id)
@@ -421,7 +421,7 @@ def confirm():
         if image_path and os.path.exists(image_path):
             os.remove(image_path)
         delete_temp_data(token)
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard.dashboard'))
 
     delete_temp_data(token)
     print("[DEBUG] /confirm completed successfully, rendering success page.")
