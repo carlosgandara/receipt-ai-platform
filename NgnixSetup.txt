@@ -1,11 +1,3 @@
-
-weasyprint
-
-this are need it for pdf
-
-sudo apt install -y libpango-1.0-0 libpangoft2-1.0-0 libgdk-pixbuf2.0-0 libffi-dev shared-mime-info 
-
-
 Nginx Configuration for Receipt AI Platform
 Overview
 Nginx acts as a reverse proxy between the internet and your Flask application (Gunicorn). It handles:
@@ -136,10 +128,6 @@ gunicorn --workers 3 app:app -b 127.0.0.1:5001 --daemon  Restart server
 
 sudo tail -20 /var/log/nginx/error.log
 
-
-checks dependecy missing:
-
-sudo journalctl -u receipt-ai.service -n 50 --no-pager
 
 
 
