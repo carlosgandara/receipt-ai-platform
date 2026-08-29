@@ -13,14 +13,19 @@ EMAIL_PORT = int(os.getenv("EMAIL_PORT", 587))
 EMAIL_USER = os.getenv("EMAIL_USER")
 EMAIL_PASS = os.getenv("EMAIL_PASS")
 EMAIL_FROM = os.getenv("EMAIL_FROM")
-EMAIL_DISPLAY_NAME = os.getenv("EMAIL_DISPLAY_NAME", "wolfchad")
+EMAIL_DISPLAY_NAME = os.getenv("EMAIL_DISPLAY_NAME", "MymailName")
 
 # ---------- Security ----------
+# Default to False for local dev; must be set to True in production .env
 COOKIE_SECURE = os.getenv("COOKIE_SECURE", "False").lower() == "true"
 BASE_URL = os.getenv("BASE_URL", "http://localhost:3000")
 
 # ---------- JWT ----------
-JWT_SECRET = os.getenv("JWT_SECRET_KEY", "dev-secret")
+# CRITICAL FIX: No default fallback – require env var
+JWT_SECRET = os.getenv("JWT_SECRET_KEY")
+if not JWT_SECRET:
+    raise ValueError("JWT_SECRET_KEY environment variable is not set. Please set it in .env.")
+
 JWT_EXPIRATION = datetime.timedelta(days=1)
 RESET_TOKEN_EXPIRATION = datetime.timedelta(minutes=15)
 VERIFICATION_EXPIRATION = datetime.timedelta(days=1)
@@ -45,7 +50,6 @@ if USE_S3:
 else:
     print("⚠️ Neon Object Storage credentials not found. Images will be stored locally.")
 
-    
 # ---------- Database ----------
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:

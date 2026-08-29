@@ -28,7 +28,7 @@ def dashboard():
     """Dashboard with filters, pagination, charts, and table."""
     user = find_user_by_email(request.user_email)
     if not user:
-        return redirect(url_for('home'))
+        return redirect(url_for('dashboard'))
     user_id = user.id
 
     # Get filter parameters

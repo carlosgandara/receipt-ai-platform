@@ -160,6 +160,8 @@ sudo tail -20 /var/log/nginx/error.log
 
 
 
+
+
 File: /etc/systemd/system/receipt-ai.service
 This is the systemd service unit file that defines how Gunicorn should run.
 
@@ -211,3 +213,33 @@ Fix: Removed the comment, leaving only:
 
 text
 EnvironmentFile=/var/www/receipt-ai-new/.env
+
+
+
+*****************
+How to commit
+
+Replace the file locally.
+
+Commit and push:
+
+bash
+git add templates/upload.html
+git commit -m "Simplify upload: single required file input (no hidden inputs)"
+git push origin refactor-with-s3
+Pull on VPS and restart:
+
+bash
+ssh despacio@159.198.76.130
+cd /var/www/receipt-ai-new
+git pull origin refactor-with-s3
+sudo systemctl restart receipt-ai.service
+Test:
+
+
+((((((((((((((((((((((((()))))))))))))))))))))))))
+
+
+how to test:
+
+python -m pytest test/test_receipts.py
