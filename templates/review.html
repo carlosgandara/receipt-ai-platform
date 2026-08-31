@@ -3,11 +3,9 @@
 {% block title %}Review Receipt{% endblock %}
 
 {% block content %}
-
-
-<div class="review-container">
+<div class="review-container glass-card">
     <h1>✏️ Review & Confirm</h1>
-    <p>Check the extracted data and correct any mistakes.</p>
+    <p class="subtitle">Check the extracted data and correct any mistakes.</p>
 
     {% with messages = get_flashed_messages() %}
         {% if messages %}
@@ -18,44 +16,52 @@
     <form action="/confirm" method="post">
         <input type="hidden" name="token" value="{{ token }}">
 
+        <!-- Merchant -->
         <div class="row">
-            <label>Merchant</label>
-            <input type="text" name="merchant" value="{{ data.merchant or '' }}">
+            <label for="merchant">Merchant</label>
+            <input type="text" id="merchant" name="merchant" value="{{ data.merchant or '' }}">
         </div>
 
+        <!-- Date -->
         <div class="row">
-            <label>Date</label>
-            <input type="text" name="date" value="{{ data.date or '' }}" placeholder="YYYY-MM-DD">
+            <label for="date">Date</label>
+            <input type="text" id="date" name="date" value="{{ data.date or '' }}" placeholder="YYYY-MM-DD">
         </div>
 
+        <!-- Time -->
         <div class="row">
-            <label>Time</label>
-            <input type="text" name="time" value="{{ data.time or '' }}" placeholder="HH:MM AM/PM">
+            <label for="time">Time</label>
+            <input type="text" id="time" name="time" value="{{ data.time or '' }}" placeholder="HH:MM AM/PM">
         </div>
 
+        <!-- Subtotal -->
         <div class="row">
-            <label>Subtotal</label>
-            <input type="text" name="subtotal" value="{{ data.subtotal or '' }}">
+            <label for="subtotal">Subtotal</label>
+            <input type="text" id="subtotal" name="subtotal" value="{{ data.subtotal or '' }}">
         </div>
 
+        <!-- Tax -->
         <div class="row">
-            <label>Tax</label>
-            <input type="text" name="tax" value="{{ data.tax or '' }}">
+            <label for="tax">Tax</label>
+            <input type="text" id="tax" name="tax" value="{{ data.tax or '' }}">
         </div>
 
+        <!-- Total -->
         <div class="row">
-            <label>Total *</label>
-            <input type="text" name="total" value="{{ data.total or '' }}" required>
+            <label for="total">Total *</label>
+            <input type="text" id="total" name="total" value="{{ data.total or '' }}" required>
         </div>
 
+        <!-- Payment Method -->
         <div class="row">
-            <label>Payment Method</label>
-            <input type="text" name="payment_method" value="{{ data.payment_method or '' }}">
+            <label for="payment_method">Payment Method</label>
+            <input type="text" id="payment_method" name="payment_method" value="{{ data.payment_method or '' }}">
         </div>
 
+        <!-- Spending Category (old) -->
         <div class="row">
-            <label>Category</label>
-            <select name="category">
+            <label for="category">Spending Category</label>
+            <select id="category" name="category">
                 {% set categories = ['FOOD','TRANSPORTATION','HOUSING','HEALTHCARE','ENTERTAINMENT','SHOPPING','EDUCATION','PERSONAL_CARE','TRAVEL','INSURANCE','OTHER'] %}
                 {% for cat in categories %}
                     <option value="{{ cat }}" {% if data.category == cat %}selected{% endif %}>{{ cat }}</option>
@@ -63,12 +69,38 @@
             </select>
         </div>
 
+        <!-- 1099 Deduction Category (NEW with AI suggestion) -->
         <div class="row">
-            <label>Comment / Notes</label>
-            <textarea name="comment" rows="3" maxlength="500" placeholder="Add any notes (e.g., business lunch, reimbursable)">{{ data.comment or '' }}</textarea>
+            <label for="deduction_category">1099 Deduction Category</label>
+            <select id="deduction_category" name="deduction_category">
+                <option value="">-- Select deduction type --</option>
+                {% for cat in deduction_categories %}
+                    <option value="{{ cat }}" 
+                        {% if data.deduction_category == cat %}selected{% endif %}>
+                        {{ cat }}
+                        {% if data.deduction_category == cat %} 🤖 (AI guess){% endif %}
+                    </option>
+                {% endfor %}
+            </select>
+            <div class="hint">
+                {% if data.deduction_category %}
+                    🤖 AI suggests: <strong>{{ data.deduction_category }}</strong> based on the merchant.
+                    Change if needed.
+                {% else %}
+                    🤖 AI thinks this is personal or couldn't determine a deduction category.
+                    Choose one if it's a business expense.
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Comment -->
+        <div class="row">
+            <label for="comment">Comment / Notes</label>
+            <textarea id="comment" name="comment" rows="3" maxlength="500" placeholder="Add any notes (e.g., business lunch, reimbursable)">{{ data.comment or '' }}</textarea>
             <div class="hint">Optional – up to 500 characters</div>
         </div>
 
+        <!-- Submit -->
         <div class="row">
             <button type="submit">✅ Accept & Save</button>
         </div>

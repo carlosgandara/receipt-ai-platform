@@ -243,3 +243,12 @@ Test:
 how to test:
 
 python -m pytest test/test_receipts.py
+
+
+how pull from github recent changes
+
+cd /var/www/receipt-ai-new	Go to your app folder
+git pull origin refactor-with-s3	Download your new UI code
+sudo systemctl restart receipt-ai.service	Apply the changes to the running app
+sudo systemctl status receipt-ai.service	Verify it's working
+sudo systemctl reload nginx	Refresh the web server

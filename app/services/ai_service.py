@@ -4,6 +4,7 @@ import json
 import re
 from openai import OpenAI
 from dotenv import load_dotenv
+from app.categories import DEDUCTION_CATEGORIES   # <-- import the list
 
 load_dotenv()
 
@@ -14,11 +15,13 @@ client = OpenAI(
 
 VISION_MODEL = 'qwen/qwen3-vl-235b-a22b-instruct'
 
+# Build a string with the allowed deduction categories
+DEDUCTION_CATEGORIES_STR = ", ".join(DEDUCTION_CATEGORIES)
+
 def process_image(image_bytes, filename):
     image_b64 = base64.b64encode(image_bytes).decode('utf-8')
 
-    # DIRECT JSON EXTRACTION, NO DESCRIPTION PROMPT (Saves tokens)
-    vision_prompt = """
+    vision_prompt = f"""
     You are an expert receipt OCR and data extraction tool. Analyze the image and return ONLY a JSON object with these exact keys:
     - merchant (string)
     - date (string, use the first 'Posting Date' in the transaction table. Do NOT use the 'Arrival Date' or 'Departure Date' in the header. Format YYYY-MM-DD)
@@ -28,6 +31,10 @@ def process_image(image_bytes, filename):
     - total (number, the 'Balance Due' at the bottom. If 'Balance Due' is 0, this is the SUM of the Subtotal and Tax for the entire stay. e.g., 293.25 + 43.83 = 337.08)
     - payment_method (string, e.g., "Visa", "Cash", etc.)
     - category (string, MUST be one of: FOOD, TRANSPORTATION, HOUSING, HEALTHCARE, ENTERTAINMENT, SHOPPING, EDUCATION, PERSONAL_CARE, TRAVEL, INSURANCE, OTHER. Hotel = TRAVEL)
+    - deduction_category (string or null): Based on the merchant name and the nature of the expense, choose the BEST match from this exact list of 1099 deduction categories: {DEDUCTION_CATEGORIES_STR}. 
+      If the expense is clearly for personal use (grocery, clothing, entertainment, personal care), set deduction_category to null.
+      If it's business-related (hotel, flight, client meal, office supplies, gas for business travel, software subscription, etc.), pick the most appropriate category from the list.
+      If you're unsure, choose the most likely category or null.
 
     CRITICAL RULES:
     1. DO NOT output a paragraph description. Skip directly to the JSON.
@@ -49,18 +56,18 @@ def process_image(image_bytes, filename):
                 ]
             }
         ],
-        temperature=0.0,  # 0.0 for absolute determinism and exact math
-        max_tokens=4096,  # Increased to capture full 3-day table
+        temperature=0.0,  # deterministic
+        max_tokens=4096,
     )
     
     llm_output = vision_response.choices[0].message.content
 
-    # --- DEBUGGING (Print this to your terminal) ---
+    # --- DEBUG ---
     print("========== DEBUG: RAW VISION MODEL OUTPUT ==========")
     print(llm_output)
     print("========== END DEBUG ==========")
-    # --------------------------------------------------------
 
+    # Try to extract JSON
     try:
         json_match = re.search(r'```(?:json)?\s*([\s\S]*?)\s*```', llm_output, re.IGNORECASE)
         if json_match:
@@ -72,14 +79,26 @@ def process_image(image_bytes, filename):
     except Exception:
         structured = {}
 
+    # Fill defaults
     defaults = {
-        'merchant': None, 'date': None, 'time': None,
-        'subtotal': None, 'tax': None, 'total': None,
-        'payment_method': None, 'category': 'OTHER'
+        'merchant': None,
+        'date': None,
+        'time': None,
+        'subtotal': None,
+        'tax': None,
+        'total': None,
+        'payment_method': None,
+        'category': 'OTHER',
+        'deduction_category': None   # <-- new field
     }
     for key, default in defaults.items():
         if key not in structured or structured[key] is None:
             structured[key] = default
+
+    # Validate deduction_category – ensure it's one of the allowed values or null
+    if structured['deduction_category'] not in DEDUCTION_CATEGORIES and structured['deduction_category'] is not None:
+        # If AI returned something invalid, set to None
+        structured['deduction_category'] = None
 
     structured['raw_description'] = llm_output
     return structured

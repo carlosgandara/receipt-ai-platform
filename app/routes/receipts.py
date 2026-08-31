@@ -47,6 +47,7 @@ from app.services.image_service import (
     delete_from_s3,
     generate_presigned_url
 )
+from app.categories import DEDUCTION_CATEGORIES  # <-- NEW import
 
 # ---------- Blueprint ----------
 receipts_bp = Blueprint('receipts', __name__, url_prefix='/')
@@ -272,7 +273,7 @@ def status(token):
 @receipts_bp.route('/review/<token>')
 @token_required
 def review(token):
-    """Show the review form with pre-filled AI data."""
+    """Show the review form with pre-filled AI data and deduction dropdown."""
     temp = load_temp_data(token)
     if not temp:
         flash('Session expired. Please upload again.')
@@ -292,7 +293,14 @@ def review(token):
         data['image_url'] = generate_presigned_url(data['s3_key'])
     else:
         data['image_url'] = data.get('image_path')
-    return render_template('review.html', token=token, data=data)
+    
+    # Pass deduction categories to the template
+    return render_template(
+        'review.html',
+        token=token,
+        data=data,
+        deduction_categories=DEDUCTION_CATEGORIES   # <-- NEW
+    )
 
 @receipts_bp.route('/processing/<token>')
 def processing(token):
@@ -315,7 +323,7 @@ def duplicate(token):
 @receipts_bp.route('/confirm', methods=['POST'])
 @token_required
 def confirm():
-    """Save the reviewed (and possibly edited) receipt data."""
+    """Save the reviewed (and possibly edited) receipt data, including deduction_category."""
     print("[DEBUG] ====== /confirm called ======")
     token = request.form.get('token')
     print(f"[DEBUG] Token from form: {token}")
@@ -361,6 +369,7 @@ def confirm():
     payment_method = request.form.get('payment_method', '').strip()
     category = request.form.get('category', '').strip()
     comment = request.form.get('comment', '').strip()
+    deduction_category = request.form.get('deduction_category', '').strip()  # <-- NEW
 
     extracted = temp_data.get('extracted', {})
     s3_key = temp_data.get('s3_key') or extracted.get('s3_key')
@@ -413,6 +422,7 @@ def confirm():
         'total': total,
         'payment_method': payment_method or None,
         'category': category,
+        'deduction_category': deduction_category or None,  # <-- NEW
         'comment': comment,
         'image_hash': image_hash,
         'raw_description': extracted.get('raw_description', '')

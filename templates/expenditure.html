@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+
+{% block title %}Expenditure Summary{% endblock %}
+
+{% block content %}
+<div class="expenditure-container">
+
+    <h1 class="page-title">📊 1099 Deduction Tracker</h1>
+    <p class="subtitle">Your weekly, monthly, and year‑to‑date deductions</p>
+
+    <!-- Summary cards -->
+    <div class="summary glass-cards">
+        <div class="card glass">
+            <h3>Total Deductions (YTD)</h3>
+            <div class="value">${{ "%.2f"|format(total_ytd) }}</div>
+        </div>
+        <div class="card glass">
+            <h3>This Month</h3>
+            <div class="value">${{ "%.2f"|format(total_month) }}</div>
+        </div>
+        <div class="card glass">
+            <h3>This Week</h3>
+            <div class="value">${{ "%.2f"|format(total_week) }}</div>
+        </div>
+    </div>
+
+    <!-- The big table -->
+    <div class="table-wrapper glass">
+        <table class="deduction-table">
+            <thead>
+                <tr>
+                    <th style="text-align:left;">Deduction Category</th>
+                    <th style="text-align:right;">This Week</th>
+                    <th style="text-align:right;">This Month</th>
+                    <th style="text-align:right;">Year to Date</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for category in categories %}
+                <tr>
+                    <td style="text-align:left; font-weight:500;">{{ category }}</td>
+                    <td style="text-align:right;">${{ "%.2f"|format(data[category].week|default(0)) }}</td>
+                    <td style="text-align:right;">${{ "%.2f"|format(data[category].month|default(0)) }}</td>
+                    <td style="text-align:right;">${{ "%.2f"|format(data[category].ytd|default(0)) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+            <tfoot>
+                <tr style="border-top: 2px solid #ffb347;">
+                    <td style="text-align:left; font-weight:700; color:#ffb347;">TOTAL DEDUCTIONS</td>
+                    <td style="text-align:right; font-weight:700;">${{ "%.2f"|format(total_week) }}</td>
+                    <td style="text-align:right; font-weight:700;">${{ "%.2f"|format(total_month) }}</td>
+                    <td style="text-align:right; font-weight:700;">${{ "%.2f"|format(total_ytd) }}</td>
+                </tr>
+            </tfoot>
+        </table>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="actions">
+        <a href="/expenditure/export" class="btn">⬇️ Export to CSV</a>
+        <a href="/expenditure/pdf" class="btn">📄 Download PDF</a>
+        <a href="/dashboard" class="btn secondary">Back to Dashboard</a>
+    </div>
+
+</div>
+{% endblock %}

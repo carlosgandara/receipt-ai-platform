@@ -616,3 +616,48 @@ tr:hover td {
         padding: 0.2rem 0.4rem;
     }
 }
+
+/* ============================================================
+   EXPENDITURE PAGE – Deduction Table
+   ============================================================ */
+
+.expenditure-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem;
+}
+
+.expenditure-container .subtitle {
+    color: rgba(255,255,255,0.6);
+    margin-bottom: 2rem;
+}
+
+.deduction-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.deduction-table th {
+    background: rgba(255, 255, 255, 0.05);
+    padding: 0.8rem 1rem;
+    font-weight: 600;
+    color: #ffb347;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.5px;
+}
+
+.deduction-table td {
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #ddd;
+}
+
+.deduction-table tbody tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.deduction-table tfoot td {
+    padding: 0.8rem 1rem;
+    font-size: 1rem;
+}

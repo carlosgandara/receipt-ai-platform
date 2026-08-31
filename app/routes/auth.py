@@ -9,7 +9,7 @@ from functools import wraps
 
 from flask import (
     Blueprint, request, jsonify, render_template, redirect,
-    url_for, make_response, flash
+    url_for, make_response, flash, session   # <-- ADDED 'session' here
 )
 import bcrypt
 import jwt
@@ -281,6 +281,12 @@ def login():
 
     create_refresh_token(user.id, raw_refresh_token, refresh_expiry)
 
+    # ============================================================
+    # FIX: Set session variables for the context processor
+    # ============================================================
+    session['user_email'] = user.email
+    session['user_id'] = user.id
+
     resp = make_response(jsonify({"message": "Login successful"}))
 
     access_max_age = int(JWT_EXPIRATION.total_seconds())
@@ -431,6 +437,9 @@ def logout():
         if token_record:
             revoke_refresh_token(token_record.id)
 
+    # Clear session as well
+    session.clear()
+
     resp = make_response(jsonify({"message": "Logged out successfully"}))
     resp.set_cookie("access_token", "", expires=0, httponly=True, secure=COOKIE_SECURE, samesite='Lax')
     resp.set_cookie("refresh_token", "", expires=0, httponly=True, secure=COOKIE_SECURE, samesite='Lax')
@@ -443,6 +452,9 @@ def logout_all():
     user = find_user_by_email(request.user_email)
     if user:
         revoke_all_user_tokens(user.id)
+
+    # Clear session
+    session.clear()
 
     resp = make_response(jsonify({"message": "Logged out of all devices successfully"}))
     resp.set_cookie("access_token", "", expires=0, httponly=True, secure=COOKIE_SECURE, samesite='Lax')
