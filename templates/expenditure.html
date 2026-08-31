@@ -1,10 +1,9 @@
 {% extends "base.html" %}
 
-{% block title %}Expenditure Summary{% endblock %}
+{% block title %}Deduction Tracker{% endblock %}
 
 {% block content %}
 <div class="expenditure-container">
-
     <h1 class="page-title">📊 1099 Deduction Tracker</h1>
     <p class="subtitle">Your weekly, monthly, and year‑to‑date deductions</p>
 
@@ -24,7 +23,7 @@
         </div>
     </div>
 
-    <!-- The big table -->
+    <!-- Main table -->
     <div class="table-wrapper glass">
         <table class="deduction-table">
             <thead>
@@ -39,9 +38,9 @@
                 {% for category in categories %}
                 <tr>
                     <td style="text-align:left; font-weight:500;">{{ category }}</td>
-                    <td style="text-align:right;">${{ "%.2f"|format(data[category].week|default(0)) }}</td>
-                    <td style="text-align:right;">${{ "%.2f"|format(data[category].month|default(0)) }}</td>
-                    <td style="text-align:right;">${{ "%.2f"|format(data[category].ytd|default(0)) }}</td>
+                    <td style="text-align:right;">${{ "%.2f"|format(data[category].week) }}</td>
+                    <td style="text-align:right;">${{ "%.2f"|format(data[category].month) }}</td>
+                    <td style="text-align:right;">${{ "%.2f"|format(data[category].ytd) }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -60,8 +59,7 @@
     <div class="actions">
         <a href="/expenditure/export" class="btn">⬇️ Export to CSV</a>
         <a href="/expenditure/pdf" class="btn">📄 Download PDF</a>
-        <a href="/dashboard" class="btn secondary">Back to Dashboard</a>
+        <a href="/dashboard" class="btn secondary">← Back to Dashboard</a>
     </div>
-
 </div>
 {% endblock %}
