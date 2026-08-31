@@ -1,0 +1,56 @@
+Switch to Celery + Redis for AI.	Medium	Handles 100+ concurrent uploads.
+Move images to S3 (or Cloudinary).	Medium	Scalable storage, no disk limits.
+Add pagination to dashboard table.	Low	Speeds up page load for large datasets.
+Change currency to Decimal or cents.	Low	Avoids rounding errors for accounting.
+Add receipt deletion (soft/hard).	Low	Users can correct mistakes.  --Done
+Implement structured logging (e.g., logging + Sentry).	Low	Debug production issues.
+
+
+
+Business‑Feature Gaps
+Missing Feature	Why It's Critical
+Multi‑user / Roles	Business owner + accountant + employees need different access.
+Client/Project tagging	Receipts must be tied to a job or client for billing/reimbursement.
+Mileage tracking	Standard deduction 65.5¢/mile – critical for drivers.
+Tax category mapping	IRS Schedule C categories (Car & Truck, Supplies, Meals, etc.).
+Export to accounting software	QuickBooks, Xero, FreshBooks (CSV with proper columns).
+Custom receipt fields	Business may need PO number, job site, etc.
+Role‑based dashboards	Accountant sees all, employee sees own.
+Automated expense reports	Generate PDF report by date range / project.
+Reimbursement workflow	Employee submits, manager approves, finance pays.
+
+
+
+
+What’s Missing in Your Current Codebase?
+🔧 Technical Gaps (That Will Break at Scale)
+Issue	Impact	Fix
+Threading for AI	Blocks web workers; 10 simultaneous uploads freeze the server.	Replace with Celery + Redis (background queue).
+Local image storage	Cannot scale horizontally; no CDN.	Migrate to AWS S3 (or Cloudinary) – store only URL in DB.
+No pagination	Dashboard loads all receipts; slow for >500 receipts.	Add limit/offset to /dashboard and table.
+Float for money	Currency rounding errors.	Change to integer (cents) or Decimal with 2 decimal places.
+No receipt deletion	User can't delete mistakes.	Add DELETE endpoint and remove image from storage.
+No bulk upload	Users upload one by one; time‑consuming.	Allow ZIP upload or email‑to‑upload (forward receipts).
+No vendor recognition	AI extracts merchant, but no vendor database.	Add a vendor auto‑complete (suggest previous merchants)
+
+
+-remove images localstorage
+-pdf by month.
+-add profile.html
+-send pdf montly weekly yearly report. 
+-add income
+-add sentry
+
+
+
+
+
+-------security issues
+3. Critical Security Gaps (from your code)
+Issue	What it means	How to fix
+JWT_SECRET falls back to "dev-secret"	In your config.py: JWT_SECRET = os.getenv("JWT_SECRET_KEY", "dev-secret"). If you forget to set this env var in production, everyone can forge JWTs using the public default secret. This is a critical vulnerability.	Ensure JWT_SECRET_KEY is always set in .env with a long, random string. Remove the default fallback or log a fatal error if missing.
+COOKIE_SECURE defaults to False	In your config.py: COOKIE_SECURE = os.getenv("COOKIE_SECURE", "False").lower() == "true". If you forget to set this to true in production, cookies will be sent over HTTP, exposing them to network sniffing.	Set COOKIE_SECURE=true in your production .env.
+No CSRF protection for state‑changing requests	While SameSite=Lax helps, you have no CSRF token for POST requests (like /confirm or /logout). If an attacker tricks a logged‑in user into visiting a malicious site, they could trigger actions.	Add CSRF protection (e.g., Flask‑WTF) for forms that change state.
+JWT HS256 uses symmetric key	HS256 means the same secret is used to sign and verify. If the secret is compromised, the attacker can issue tokens. RS256 (asymmetric) is more secure for distributed systems.	For now, keep HS256 but ensure the secret is extremely strong and rotated regularly.
+No token revocation on logout	Your logout revokes the refresh token, but the access_token remains valid until it expires (24h). If someone steals the access token, it stays valid.	This is acceptable if you have short expiry, but you could also implement a token blacklist.
+SQL injection	You use SQLAlchemy ORM with parameterized queries – this is safe.	Already safe.

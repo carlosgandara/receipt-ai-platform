@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="nav">
+    <span><strong>🔒 MyApp</strong></span>
+    <a href="/dashboard">Dashboard</a>
+    <a href="/profile">Profile</a>
+</div>
+
+<h1>📊 Dashboard</h1>
+<p class="status">✅ You are authenticated!</p>
+
+<div class="card">
+    <h3>Your Protected Data (Fetched from API)</h3>
+    <button onclick="fetchProtectedData()">🔄 Refresh Data</button>
+    <pre id="api-response">Loading...</pre>
+</div>
+
+<div class="card">
+    <h3>💡 How the Refresh Token Works</h3>
+    <p>If your Access Token expires (e.g., after 1 hour), the frontend automatically catches the <code>401</code> error, calls <code>/refresh</code> to get new tokens, and retries the request—all without you noticing.</p>
+    <p><strong>Try it:</strong> Set <code>JWT_EXPIRATION = datetime.timedelta(minutes=1)</code> in your config, log in, wait 1 minute, and click "Refresh Data". You'll see it silently recover.</p>
+</div>
+{% endblock %}

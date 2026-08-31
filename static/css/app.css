@@ -1,0 +1,618 @@
+/* ============================================================
+   GLOBAL DARK THEME – base
+   ============================================================ */
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Arial, sans-serif;
+    background: linear-gradient(145deg, #0b1120 0%, #1a2a3a 40%, #2d1f0e 100%);
+    color: #e0e0e0;
+}
+
+.main-content {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 1.5rem;
+}
+
+/* ============================================================
+   GLASS NAVIGATION
+   ============================================================ */
+.nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    padding: 0.75rem 2rem;
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    gap: 0.5rem 1rem;
+}
+
+.brand {
+    font-weight: 700;
+    font-size: 1.3rem;
+    color: #ffb347;
+    letter-spacing: 0.5px;
+}
+
+.nav-links {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.nav-links a {
+    color: #c0d0e0;
+    text-decoration: none;
+    padding: 0.3rem 0.6rem;
+    border-radius: 8px;
+    transition: background 0.2s, color 0.2s;
+}
+
+.nav-links a:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #ffffff;
+}
+
+.user-email {
+    color: #aaa;
+    font-size: 0.85rem;
+    margin-left: 0.5rem;
+}
+
+#logout-btn {
+    background: none;
+    border: none;
+    color: #dc3545;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 8px;
+    transition: background 0.2s;
+}
+
+#logout-btn:hover {
+    background: rgba(220, 53, 69, 0.15);
+}
+
+.guest-tag {
+    color: #888;
+    font-size: 0.9rem;
+}
+
+/* ============================================================
+   DASHBOARD – Glass cards & responsive layout
+   ============================================================ */
+.dashboard-container {
+    padding: 1rem 0;
+}
+
+.page-title {
+    font-size: 2rem;
+    font-weight: 300;
+    color: #ffb347;
+    margin-bottom: 1.5rem;
+    letter-spacing: 1px;
+}
+
+.summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.card {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 1.2rem 1rem;
+    text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
+}
+
+.card h3 {
+    margin: 0 0 0.5rem 0;
+    font-size: 0.8rem;
+    font-weight: 400;
+    color: #aab;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+.card .value {
+    font-size: 1.8rem;
+    font-weight: 600;
+    color: #f0f0f0;
+}
+
+/* Filters – glass */
+.filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(6px);
+    border-radius: 16px;
+    padding: 1.2rem 1.5rem;
+    margin-bottom: 1.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    flex: 1 0 120px;
+}
+
+.filter-group label {
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: #aab;
+}
+
+.filter-group input,
+.filter-group select {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    padding: 0.5rem 0.8rem;
+    color: #fff;
+    font-size: 0.9rem;
+    transition: border 0.2s, box-shadow 0.2s;
+    width: 100%;
+}
+
+.filter-group input:focus,
+.filter-group select:focus {
+    outline: none;
+    border-color: #ffb347;
+    box-shadow: 0 0 0 3px rgba(255, 179, 71, 0.2);
+}
+
+.filter-group button {
+    background: #ffb347;
+    border: none;
+    border-radius: 10px;
+    padding: 0.6rem 1.2rem;
+    color: #0b1120;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s, transform 0.1s;
+    width: 100%;
+}
+
+.filter-group button:hover {
+    background: #f59e0b;
+    transform: scale(1.02);
+}
+
+/* Action buttons */
+.actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+    margin: 1rem 0 1.5rem 0;
+}
+
+.actions .btn {
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 12px;
+    padding: 0.5rem 1.2rem;
+    color: #ddd;
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: background 0.2s, border-color 0.2s;
+}
+
+.actions .btn:hover {
+    background: rgba(255, 255, 255, 0.12);
+    border-color: #ffb347;
+}
+
+.actions .btn.secondary {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Charts containers */
+.charts {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1.5rem;
+}
+
+.chart-container {
+    background: rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(6px);
+    border-radius: 16px;
+    padding: 1.2rem;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.chart-container canvas {
+    max-height: 250px;
+    width: 100% !important;
+}
+
+.section-title {
+    font-size: 1.3rem;
+    font-weight: 300;
+    color: #ccc;
+    margin: 2rem 0 1rem 0;
+    letter-spacing: 0.5px;
+}
+
+.table-wrapper {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(4px);
+    border-radius: 16px;
+    padding: 0.5rem;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+}
+
+th {
+    text-align: left;
+    padding: 0.8rem 0.5rem;
+    color: #aab;
+    font-weight: 400;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+td {
+    padding: 0.7rem 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: #ddd;
+}
+
+tr:hover td {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.thumbnail {
+    max-width: 50px;
+    max-height: 50px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+}
+
+.thumbnail:hover {
+    opacity: 0.7;
+}
+
+.delete-btn {
+    background: rgba(220, 53, 69, 0.15);
+    border: none;
+    color: #dc3545;
+    padding: 0.3rem 0.6rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background 0.2s;
+}
+
+.delete-btn:hover {
+    background: rgba(220, 53, 69, 0.3);
+}
+
+/* Pagination */
+.pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.8rem;
+    margin-top: 1.5rem;
+    padding: 0.8rem 1.2rem;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.pagination button {
+    background: rgba(255, 255, 255, 0.06);
+    border: none;
+    border-radius: 8px;
+    padding: 0.3rem 1rem;
+    color: #ddd;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.pagination button:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.pagination button:not(:disabled):hover {
+    background: rgba(255, 179, 71, 0.2);
+    color: #fff;
+}
+
+.page-size-wrapper select {
+    background: rgba(255, 255, 255, 0.07);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    padding: 0.2rem 0.5rem;
+    color: #fff;
+}
+
+/* Hidden elements */
+.hidden-token {
+    display: none;
+}
+
+/* ============================================================
+   AUTH PAGES – kept from original (register, forgot, reset)
+   ============================================================ */
+.auth-container {
+    max-width: 400px;
+    margin: 3rem auto;
+    padding: 2rem;
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(12px);
+    border-radius: 20px;
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #ddd;
+}
+
+.auth-container h1 {
+    text-align: center;
+    color: #ffb347;
+}
+
+.auth-container label {
+    display: block;
+    font-weight: 500;
+    margin-top: 1rem;
+}
+
+.auth-container input {
+    width: 100%;
+    padding: 0.6rem;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.06);
+    color: #fff;
+    margin-top: 0.2rem;
+}
+
+.auth-container button {
+    width: 100%;
+    padding: 0.7rem;
+    background: #ffb347;
+    border: none;
+    border-radius: 10px;
+    font-weight: 600;
+    color: #0b1120;
+    cursor: pointer;
+    margin-top: 1.5rem;
+}
+
+.auth-container button:hover {
+    background: #f59e0b;
+}
+
+.auth-container .msg {
+    margin-top: 1rem;
+    padding: 0.5rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.auth-container .success { background: rgba(52,211,153,0.2); color: #6ee7b7; }
+.auth-container .error { background: rgba(239,68,68,0.2); color: #fca5a5; }
+
+.auth-container .links a {
+    color: #ffb347;
+    text-decoration: none;
+}
+
+/* ============================================================
+   MONEY MIRROR LOGIN – immersive (used on login page only)
+   ============================================================ */
+.mirror-login-wrapper {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+    background: linear-gradient(145deg, #0b1120 0%, #1a2a3a 40%, #3d2500 100%);
+    overflow: hidden;
+    padding: 1rem;
+}
+
+.orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.5;
+    pointer-events: none;
+    animation: floatOrb 12s infinite alternate ease-in-out;
+}
+
+.orb-1 {
+    width: 40vw;
+    height: 40vw;
+    background: #ffb347;
+    top: -10%;
+    right: -10%;
+    animation-duration: 14s;
+}
+.orb-2 {
+    width: 30vw;
+    height: 30vw;
+    background: #4f8cf7;
+    bottom: -5%;
+    left: -5%;
+    animation-duration: 18s;
+    animation-delay: -4s;
+}
+.orb-3 {
+    width: 20vw;
+    height: 20vw;
+    background: #a78bfa;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    animation-duration: 16s;
+    animation-delay: -8s;
+    opacity: 0.3;
+}
+
+@keyframes floatOrb {
+    0% { transform: translate(0,0) scale(1); }
+    100% { transform: translate(30px, -50px) scale(1.2); }
+}
+
+.mirror-login-wrapper .auth-container.modern-auth {
+    position: relative;
+    z-index: 20;
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(24px);
+    border: 1px solid rgba(255,255,255,0.12);
+    box-shadow: 0 30px 80px rgba(0,0,0,0.6);
+    max-width: 420px;
+    width: 100%;
+    margin: 0;
+    padding: 2.5rem 2rem;
+    border-radius: 24px;
+    transition: transform 0.3s, box-shadow 0.3s;
+}
+
+.mirror-login-wrapper .auth-container.modern-auth:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 40px 90px rgba(0,0,0,0.7);
+}
+
+/* Override dark text on login */
+.mirror-login-wrapper .auth-container.modern-auth h1 { color: #fff; text-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+.mirror-login-wrapper .auth-container.modern-auth .subtitle { color: rgba(255,255,255,0.75); }
+.mirror-login-wrapper .input-group label { color: rgba(255,255,255,0.85); }
+.mirror-login-wrapper .input-group input {
+    background: rgba(255,255,255,0.08);
+    border-color: rgba(255,255,255,0.15);
+    color: #fff;
+}
+.mirror-login-wrapper .input-group input:focus {
+    border-color: #ffb347;
+    box-shadow: 0 0 0 4px rgba(255,179,71,0.15);
+}
+.mirror-login-wrapper #toggle-password { color: rgba(255,255,255,0.6); }
+.mirror-login-wrapper #toggle-password:hover { color: #fff; }
+.mirror-login-wrapper .remember-me { color: rgba(255,255,255,0.75); }
+.mirror-login-wrapper .forgot-link { color: #ffb347; }
+.mirror-login-wrapper #login-btn {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    box-shadow: 0 8px 24px rgba(245,158,11,0.3);
+}
+.mirror-login-wrapper #login-btn:hover {
+    background: linear-gradient(135deg, #fbbf24, #f59e0b);
+}
+.mirror-login-wrapper #msg.success { background: rgba(52,211,153,0.2); color: #6ee7b7; }
+.mirror-login-wrapper #msg.error { background: rgba(239,68,68,0.2); color: #fca5a5; }
+.mirror-login-wrapper .auth-footer { color: rgba(255,255,255,0.6); }
+.mirror-login-wrapper .auth-footer a { color: #ffb347; }
+
+/* ============================================================
+   RESPONSIVE TWEAKS
+   ============================================================ */
+@media (max-width: 768px) {
+    .nav {
+        padding: 0.5rem 1rem;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.3rem;
+    }
+    .brand {
+        text-align: center;
+    }
+    .nav-links {
+        justify-content: center;
+        gap: 0.5rem;
+    }
+    .user-email {
+        margin-left: 0;
+    }
+    .charts {
+        grid-template-columns: 1fr;
+    }
+    .filters {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 1rem;
+    }
+    .filter-group {
+        flex: 1 1 auto;
+    }
+    .summary {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .page-title {
+        font-size: 1.6rem;
+        text-align: center;
+    }
+    .actions {
+        justify-content: center;
+    }
+    .pagination {
+        justify-content: center;
+    }
+}
+
+@media (max-width: 480px) {
+    .summary {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+    .card {
+        padding: 0.8rem 0.5rem;
+    }
+    .card .value {
+        font-size: 1.4rem;
+    }
+    .table-wrapper {
+        padding: 0.2rem;
+    }
+    th, td {
+        padding: 0.4rem 0.3rem;
+        font-size: 0.8rem;
+    }
+    .filter-group input, .filter-group select {
+        font-size: 0.8rem;
+    }
+    .nav-links a, #logout-btn {
+        font-size: 0.85rem;
+        padding: 0.2rem 0.4rem;
+    }
+}

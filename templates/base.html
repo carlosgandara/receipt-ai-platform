@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Receipt AI{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+    <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</head>
+<body>
+    <!-- Navigation – glass style, dark -->
+    <nav class="nav glass-nav">
+        <span class="brand">🧠 Clarity AI</span>
+        <div class="nav-links">
+            {% if user_email %}
+                <a href="/dashboard">Dashboard</a>
+                <a href="/upload">Upload</a>
+                <a href="/profile">Profile</a>
+                <span class="user-email">{{ user_email }}</span>
+                <button id="logout-btn">🚪 Logout</button>
+            {% else %}
+                <span class="guest-tag">Sign in to manage your receipts</span>
+            {% endif %}
+        </div>
+    </nav>
+
+    <!-- Main content wrapper – dark background -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <div id="toast"></div>
+</body>
+</html>

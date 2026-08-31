@@ -1,0 +1,58 @@
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+
+# ==============================
+# Virtual environments
+# ==============================
+venv/
+env/
+ENV/
+.venv/
+
+# ==============================
+# Environment variables (secrets)
+# ==============================
+.env
+.env.local
+.env.*.local
+
+# ==============================
+# Temporary & uploaded files (receipt app)
+# ==============================
+uploads/
+images/
+results/
+results_clean/
+
+# ==============================
+# Data files (keep local only)
+# ==============================
+*.csv
+*.db
+*.sqlite3
+user_db.json
+
+# ==============================
+# IDE / editor settings
+# ==============================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ==============================
+# Logs
+# ==============================
+*.logalembic.ini

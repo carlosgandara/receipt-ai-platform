@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+
+{% block title %}Duplicate Receipt{% endblock %}
+
+{% block content %}
+
+
+<div class="warning-card">
+    <h1>⚠️ Receipt Already Exists</h1>
+    <p>This receipt appears to be already saved in your database.</p>
+    <p><strong>Duplicate detected.</strong> No new record was created.</p>
+    <p>If you believe this is a mistake, please check the dashboard for the existing entry.</p>
+</div>
+
+<div class="actions">
+    <a href="/upload">Upload Another</a>
+    <a href="/dashboard" class="secondary">View Dashboard</a>
+</div>
+{% endblock %}
