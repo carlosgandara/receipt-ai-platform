@@ -40,38 +40,72 @@ async function logout() {
 
 
 // ============================================================
-// LOGIN PAGE
+// LOGIN PAGE - Enhanced UX (REPLACES old login handler)
 // ============================================================
 
 if (document.getElementById('login-form')) {
-    document.getElementById('login-form').onsubmit = async (e) => {
+    const form = document.getElementById('login-form');
+    const email = document.getElementById('email');
+    const password = document.getElementById('password');
+    const msg = document.getElementById('msg');
+    const loginBtn = document.getElementById('login-btn');
+    const btnText = loginBtn.querySelector('.btn-text');
+    const spinner = loginBtn.querySelector('.spinner-btn');
+
+    // --- Password toggle ---
+    const toggleBtn = document.getElementById('toggle-password');
+    if (toggleBtn) {
+        toggleBtn.addEventListener('click', function() {
+            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+            password.setAttribute('type', type);
+            this.textContent = type === 'password' ? '👁️' : '👁️‍🗨️';
+            this.setAttribute('aria-label', type === 'password' ? 'Show password' : 'Hide password');
+        });
+    }
+
+    // --- Form submission ---
+    form.onsubmit = async (e) => {
         e.preventDefault();
-        const email = document.getElementById('email').value;
-        const password = document.getElementById('password').value;
-        const msg = document.getElementById('msg');
-        
-        msg.textContent = 'Logging in...';
+
+        // Reset message
         msg.className = '';
+        msg.style.display = 'none';
+        msg.textContent = '';
+
+        // Disable button, show spinner
+        loginBtn.disabled = true;
+        btnText.textContent = 'Signing in...';
+        spinner.style.display = 'inline-block';
 
         try {
             const res = await fetch('/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
+                body: JSON.stringify({ email: email.value, password: password.value })
             });
             const data = await res.json();
 
             if (res.ok) {
                 msg.className = 'success';
                 msg.textContent = '✅ Login successful! Redirecting...';
+                msg.style.display = 'block';
                 setTimeout(() => window.location.href = '/dashboard', 800);
             } else {
                 msg.className = 'error';
-                msg.textContent = data.error || 'Login failed';
+                msg.textContent = data.error || 'Login failed. Please try again.';
+                msg.style.display = 'block';
+                // Re-enable button
+                loginBtn.disabled = false;
+                btnText.textContent = 'Sign In';
+                spinner.style.display = 'none';
             }
         } catch (err) {
             msg.className = 'error';
             msg.textContent = 'Network error: ' + err.message;
+            msg.style.display = 'block';
+            loginBtn.disabled = false;
+            btnText.textContent = 'Sign In';
+            spinner.style.display = 'none';
         }
     };
 }

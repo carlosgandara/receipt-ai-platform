@@ -4,29 +4,31 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Receipt AI{% endblock %}</title>
-
-    <!-- External CSS – no inline styles -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
-
-    <!-- External JS – no inline scripts, defer ensures DOM is ready -->
     <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
 </head>
 <body>
-    <!-- Navigation bar – common to all pages -->
-    <div class="nav">
-        <span><strong>📄 Receipt AI</strong></span>
-        <a href="/dashboard">Dashboard</a>
-        <a href="/upload">Upload</a>
-        <!-- ✅ Logout button uses an ID, no inline onclick -->
-             <span style="margin-left:auto; color:#666; font-size:0.9rem;">{{ user_email }}</span>
+    <!-- Navigation – glass style, dark -->
+    <nav class="nav glass-nav">
+        <span class="brand">🧠 Clarity AI</span>
+        <div class="nav-links">
+            {% if user_email %}
+                <a href="/dashboard">Dashboard</a>
+                <a href="/upload">Upload</a>
+                <a href="/profile">Profile</a>
+                <span class="user-email">{{ user_email }}</span>
+                <button id="logout-btn">🚪 Logout</button>
+            {% else %}
+                <span class="guest-tag">Sign in to manage your receipts</span>
+            {% endif %}
+        </div>
+    </nav>
 
-        <button id="logout-btn">🚪 Logout</button>
-    </div>
+    <!-- Main content wrapper – dark background -->
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
 
-    <!-- Page‑specific content -->
-    {% block content %}{% endblock %}
-
-    <!-- Optional toast notification (used by authenticatedFetch) -->
     <div id="toast"></div>
 </body>
 </html>
