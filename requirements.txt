@@ -10,7 +10,7 @@ flask-talisman==1.1.0
 Pillow==10.0.0
 portalocker==2.8.2
 openai==0.28.0
-novita-client==0.1.0
+novita-client==0.7.1
 boto3==1.28.0
 gunicorn==21.2.0
 weasyprint==69.0
