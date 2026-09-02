@@ -1,17 +1,13 @@
 # app/routes/dashboard.py – Dashboard & Export Blueprint
-# Contains /dashboard and /export routes with pagination, filters, charts, and JSON export.
+# Contains /dashboard and /export routes with pagination, filters, charts, JSON export, and Excel export.
 
 import datetime
 from collections import defaultdict
-
-
-from flask import send_file
 import io
-from app.utils.report import generate_report_pdf   # <-- new import
+import pandas as pd
+from openpyxl.utils import get_column_letter   # <-- FIXED: imported for column width
 
-from flask import (
-    Blueprint, request, jsonify, render_template, redirect, url_for, flash
-)
+from flask import send_file, Blueprint, request, jsonify, render_template, redirect, url_for, flash
 
 from app.utils.db import (
     find_user_by_email,
@@ -19,8 +15,10 @@ from app.utils.db import (
 )
 from app.decorators.auth import token_required
 from app.services.image_service import generate_presigned_url
+from app.utils.report import generate_report_pdf
 
 dashboard_bp = Blueprint('dashboard', __name__, url_prefix='/')
+
 
 @dashboard_bp.route('/dashboard')
 @token_required
@@ -175,6 +173,7 @@ def dashboard():
 
     return render_template('dashboard.html', **template_data)
 
+
 @dashboard_bp.route('/export')
 @token_required
 def export_json():
@@ -214,9 +213,11 @@ def export_json():
 
     return jsonify(data)
 
+
 @dashboard_bp.route('/report')
 @token_required
 def download_report():
+    """Download a PDF report for the given month/year."""
     user = find_user_by_email(request.user_email)
     if not user:
         return jsonify({"error": "User not found"}), 401
@@ -229,11 +230,124 @@ def download_report():
         month = now.strftime('%Y-%m')
         year = str(now.year)
 
-    # Generate PDF (outside the if block)
     pdf_data = generate_report_pdf(user.id, month, year, user.email)
     return send_file(
         io.BytesIO(pdf_data),
         as_attachment=True,
         download_name=f"report-{month}.pdf",
         mimetype='application/pdf'
+    )
+
+
+# ============================================================
+# FIXED Excel Export – with proper column letters & organization
+# ============================================================
+@dashboard_bp.route('/export/excel')
+@token_required
+def export_excel():
+    """Export filtered data as Excel (.xlsx) with organized summaries."""
+    user = find_user_by_email(request.user_email)
+    if not user:
+        return jsonify({"error": "User not found"}), 401
+    user_id = user.id
+
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    category = request.args.get('category')
+    merchant_search = request.args.get('merchant')
+
+    records = get_user_receipts(
+        user_id,
+        start_date=start_date,
+        end_date=end_date,
+        category=category,
+        merchant=merchant_search,
+        include_deleted=False
+    )
+
+    # ----- 1. Build Receipts sheet data (sorted by date descending) -----
+    data = []
+    for r in records:
+        data.append({
+            'Date': r.date or '',
+            'Merchant': r.merchant or '',
+            'Total': float(r.total) if r.total else 0,
+            'Category': r.category or '',
+            'Deduction Category': getattr(r, 'deduction_category', '') or '',
+            'Comment': r.comment or '',
+            'Payment Method': r.payment_method or '',
+            'Subtotal': float(r.subtotal) if r.subtotal else 0,
+            'Tax': float(r.tax) if r.tax else 0,
+        })
+
+    df_receipts = pd.DataFrame(data)
+    # Sort by date descending (newest first) – convert date to datetime for proper sorting
+    df_receipts['Date_parsed'] = pd.to_datetime(df_receipts['Date'], errors='coerce')
+    df_receipts = df_receipts.sort_values('Date_parsed', ascending=False).drop('Date_parsed', axis=1)
+
+    # ----- 2. Category Summary (sorted descending) -----
+    cat_summary = df_receipts.groupby('Category', as_index=False)['Total'].sum()
+    cat_summary.columns = ['Category', 'Total Spent']
+    cat_summary = cat_summary[cat_summary['Category'] != '']  # remove empty
+    cat_summary = cat_summary.sort_values('Total Spent', ascending=False)
+
+    # Add a Grand Total row
+    grand_total_cat = cat_summary['Total Spent'].sum()
+    cat_summary.loc[len(cat_summary)] = ['GRAND TOTAL', grand_total_cat]
+
+    # ----- 3. Deduction Summary (sorted descending) -----
+    ded_summary = df_receipts.groupby('Deduction Category', as_index=False)['Total'].sum()
+    ded_summary.columns = ['Deduction Category', 'Total Spent']
+    ded_summary = ded_summary[ded_summary['Deduction Category'] != '']  # remove empty
+    ded_summary = ded_summary.sort_values('Total Spent', ascending=False)
+
+    # Add a Grand Total row
+    grand_total_ded = ded_summary['Total Spent'].sum()
+    ded_summary.loc[len(ded_summary)] = ['GRAND TOTAL', grand_total_ded]
+
+    # ----- 4. Write Excel with formatting -----
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Write all sheets
+        df_receipts.to_excel(writer, index=False, sheet_name='Receipts')
+        cat_summary.to_excel(writer, index=False, sheet_name='Category Summary')
+        if not ded_summary.empty:
+            ded_summary.to_excel(writer, index=False, sheet_name='Deduction Summary')
+
+        # Get workbook and adjust each sheet
+        workbook = writer.book
+        sheet_mapping = {
+            'Receipts': df_receipts,
+            'Category Summary': cat_summary,
+            'Deduction Summary': ded_summary
+        }
+
+        for sheet_name, df in sheet_mapping.items():
+            if sheet_name not in writer.sheets:
+                continue
+            worksheet = writer.sheets[sheet_name]
+
+            # Set column widths using openpyxl's get_column_letter
+            for i, col in enumerate(df.columns, 1):
+                max_len = max(df[col].astype(str).map(len).max(), len(col)) + 2
+                col_letter = get_column_letter(i)
+                worksheet.column_dimensions[col_letter].width = min(max_len, 50)
+
+            # Bold headers
+            for cell in worksheet[1]:
+                cell.font = cell.font.copy(bold=True)
+
+            # Format currency for the second column in summary sheets
+            if sheet_name != 'Receipts':
+                for row in range(2, len(df) + 2):
+                    cell = worksheet.cell(row=row, column=2)
+                    cell.number_format = '$#,##0.00'
+
+    output.seek(0)
+
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=f"receipts_export_{datetime.datetime.now().strftime('%Y%m%d')}.xlsx",
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )

@@ -53,6 +53,7 @@
     <div class="actions">
         <a href="/dashboard" class="btn secondary">Reset Filters</a>
         <a href="/export{{ '?' + request.query_string.decode() if request.query_string else '' }}" class="btn">⬇️ Export (JSON)</a>
+        <a href="/export/excel{{ '?' + request.query_string.decode() if request.query_string else '' }}" class="btn">📊 Export (Excel)</a>
         <a href="/report?month={{ start_date[:7] }}&year={{ start_date[:4] }}" class="btn">📄 PDF Report</a>
     </div>
 
