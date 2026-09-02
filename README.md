@@ -1,15 +1,20 @@
- Receipt AI Platform – Complete Technical Overview
+Receipt AI Platform – Complete Technical Overview (v1.1)
 📌 Project Summary
 Receipt AI is a production‑ready, full‑stack web application that uses AI to extract structured data from receipt images. Users upload receipt photos, the app extracts merchant, date, amounts, and category using Novita AI, and presents a dashboard with spending analytics, filters, charts, and export capabilities.
 
 The platform supports multi‑user authentication, per‑user data isolation, cloud image storage (Neon Object Storage), soft delete, pagination, and strict security (CSP, HttpOnly cookies, JWT refresh rotation).
 
+New in v1.1: The app now includes a 1099 Deduction Tracker that automatically suggests tax deduction categories using the AI, displays weekly/monthly/year‑to‑date totals, and supports CSV/PDF exports for tax reporting. The UI has been redesigned for maximum readability with a clean, high‑contrast "Clarity Business" theme.
+
 🧠 Core Features (Current State)
 Feature	Description
-User Authentication	JWT-based with HttpOnly cookies, refresh token rotation, email verification, password reset, logout-all-devices.
-Receipt Upload	Drag‑and‑drop or file picker. Images are compressed to ~100‑150 KB before processing.
-AI Extraction	Uses Novita AI’s Vision model (Qwen VL) to read the image and a Text model (DeepSeek V3.2) to structure the data. Extracts: merchant, date, time, subtotal, tax, total, payment method, category.
-Review & Edit	Users can correct AI mistakes before saving. Also includes a comment/notes field.
+User Authentication	JWT-based with HttpOnly cookies, refresh token rotation, email verification, password reset, logout‑all‑devices.
+Receipt Upload	Simple file upload with a large, obvious button – optimized for mobile with capture="environment" for direct camera access.
+AI Extraction	Uses Novita AI’s Vision model (Qwen VL) to read the image and a Text model (DeepSeek V3.2) to structure the data. Extracts: merchant, date, time, subtotal, tax, total, payment method, category, and automatically suggests a 1099 deduction category.
+Review & Edit	Users can correct AI mistakes before saving. Includes a comment/notes field and a deduction category dropdown with AI suggestions.
+1099 Deduction Tracker (NEW)	27 IRS‑recognized deduction categories (Advertising, Travel, Meals 50%, Home Office, etc.). AI automatically suggests the best category based on merchant name. Users can confirm or change the category on the review page.
+Expenditure Page (NEW)	Clean table showing weekly, monthly, and year‑to‑date totals for each deduction category. Summary cards show total deductions.
+Export Capabilities (NEW)	CSV export – downloads all deduction data in spreadsheet format. PDF export – generates a professional PDF report with summary cards and full deduction table.
 Duplicate Prevention	Per‑user duplicate check using receipt_hash (MD5 of merchant + date + total + user_id). No global uniqueness – different users can upload the same receipt.
 Image Storage	• Primary: Neon Object Storage (S3‑compatible) – private bucket, served via presigned URLs (1‑hour expiry).
 • Fallback: Local images/ folder if S3 fails.
@@ -22,7 +27,7 @@ Dashboard	• Summary cards (total receipts, total spent, average, min/max).
 • Pagination (25/50/100 per page).
 Soft Delete	Receipts are marked deleted_at (timestamp) instead of hard‑deleted. They remain hidden from dashboard but can be restored or permanently purged (30‑day cleanup planned).
 S3 Image Deletion	When a receipt is soft‑deleted, its image is also deleted from Neon Object Storage.
-CSP Compliance	Strict Content Security Policy – external CSS/JS only, no inline scripts/styles (Chart.js uses unsafe-inline for styles, but that’s a temporary allowance).
+CSP Compliance	Strict Content Security Policy – external CSS/JS only, no inline scripts/styles.
 Rate Limiting	Per‑IP and per‑IP+user combo protection (in‑memory for development).
 Health Check	/health endpoint for load balancers and monitoring.
 🏗️ Architecture & Tech Stack
@@ -37,24 +42,27 @@ Email	SMTP (Brevo / Sendinblue / Gmail)
 Security Headers	Flask‑Talisman (CSP, HSTS, X‑Frame‑Options)
 Rate Limiting	Flask‑Limiter (in‑memory for development)
 Image Processing	Pillow (compression, resizing)
+PDF Generation	WeasyPrint – generates clean, professional PDF reports
 Background Tasks	threading (to be replaced with Celery + Redis later)
 Frontend
 Component	Technology
 HTML Templating	Jinja2 (Flask templates)
-Styling	External app.css (CSP‑compliant)
+Styling	External app.css – Clarity Business theme (light, high‑contrast, readable)
 JavaScript	Vanilla JS in app.js (CSP‑compliant)
 Charts	Chart.js (loaded from CDN)
 Authentication	HttpOnly cookies (XSS‑safe) + silent token refresh via authenticatedFetch()
+Mobile Responsiveness	Fully responsive – works on phones, tablets, and desktops
 Infrastructure
 Component	Service
 Database	Neon PostgreSQL (serverless, auto‑backup, branching)
 Object Storage	Neon Object Storage (S3‑compatible)
-Environment	Local development (Windows) – production would use Gunicorn + Nginx + Docker
-📂 Project Structure (After Refactoring)
+Environment	Production: Ubuntu 22.04 VPS with Gunicorn + Nginx + Let's Encrypt
+📂 Project Structure (Current)
 text
-python-flask-jwt-auth/
+receipt-ai-platform/
 ├── app/                          # Application package
 │   ├── __init__.py               # Flask app factory, extensions, blueprint registration
+│   ├── categories.py             # Single source of truth for 27 deduction categories (NEW)
 │   ├── config.py                 # Environment variables & constants
 │   ├── decorators/               # Shared decorators
 │   │   ├── __init__.py
@@ -65,34 +73,37 @@ python-flask-jwt-auth/
 │   │   ├── receipts.py           # Upload, confirm, review, status, delete
 │   │   ├── dashboard.py          # Dashboard & export
 │   │   ├── images.py             # Local image serving (fallback)
-│   │   └── profile.py            # User profile page
+│   │   ├── profile.py            # User profile page
+│   │   └── expenditure.py        # 1099 Deduction Tracker – table, CSV, PDF exports (NEW)
 │   ├── services/                 # Business logic & external integrations
 │   │   ├── __init__.py
-│   │   ├── ai_service.py         # Novita AI (Vision + Text)
+│   │   ├── ai_service.py         # Novita AI (Vision + Text) with deduction suggestion
 │   │   ├── image_service.py      # Compression, S3 upload, presigned URLs
 │   │   └── mail_service.py       # SMTP email sending
 │   └── utils/                    # Pure helpers & database layer
 │       ├── __init__.py
-│       ├── db.py                 # SQLAlchemy models + CRUD (500+ lines)
+│       ├── db.py                 # SQLAlchemy models + CRUD
 │       └── session.py            # Session/temp file management
 ├── templates/                    # Jinja2 templates (root level)
-│   ├── base.html
-│   ├── login.html
-│   ├── register.html
-│   ├── forgot_password.html
-│   ├── reset_password.html
-│   ├── verify_success.html
-│   ├── verify_error.html
-│   ├── upload.html
-│   ├── processing.html
-│   ├── review.html
-│   ├── duplicate.html
-│   ├── success.html
-│   ├── dashboard.html
-│   └── profile.html
+│   ├── base.html                 # Base layout with conditional nav (user email)
+│   ├── login.html                # Clean, simple login (NEW – one big button)
+│   ├── register.html             # Registration page
+│   ├── forgot_password.html      # Password reset request
+│   ├── reset_password.html       # Password reset form
+│   ├── verify_success.html       # Email verification success
+│   ├── verify_error.html         # Email verification error
+│   ├── upload.html               # Upload page (BIG button – simple) (NEW)
+│   ├── processing.html           # AI processing spinner
+│   ├── review.html               # Review with deduction dropdown (NEW)
+│   ├── duplicate.html            # Duplicate detection page
+│   ├── success.html              # Receipt saved confirmation
+│   ├── dashboard.html            # Main dashboard
+│   ├── expenditure.html          # 1099 Deduction Tracker table (NEW)
+│   ├── expenditure_pdf.html      # PDF export template (NEW)
+│   └── profile.html              # User profile
 ├── static/                       # External CSS/JS (root level)
 │   ├── css/
-│   │   └── app.css               # All styles (CSP‑compliant)
+│   │   └── app.css               # Clarity Business theme (light, high-contrast)
 │   └── js/
 │       └── app.js                # All JavaScript (CSP‑compliant)
 ├── images/                       # Local fallback storage (user-specific subfolders)
@@ -143,58 +154,79 @@ tax	FLOAT	Tax amount
 total	FLOAT	Total amount paid
 payment_method	VARCHAR(50)	Cash, Visa, etc.
 category	VARCHAR(50)	FOOD, TRANSPORTATION, etc.
+deduction_category (NEW)	VARCHAR(100)	1099 deduction category (27 options)
 comment	VARCHAR(500)	User notes
 raw_description	TEXT	AI raw description (debug)
 image_hash	VARCHAR(32)	MD5 of compressed image
 deleted_at	TIMESTAMP	NULL = active
 created_at	TIMESTAMP	Auto‑set
 processed_at	TIMESTAMP	AI processing timestamp
-Indexes: user_id, date, category, merchant, deleted_at, s3_key, receipt_hash (non‑unique).
+Indexes: user_id, date, category, merchant, deleted_at, s3_key, receipt_hash (non‑unique), deduction_category (NEW).
 
 🔄 Key Workflows
-1. Upload → AI → Review → Save
-User uploads image.
-
-Image is compressed (1200px max, JPEG quality 85).
-
-AI processes (Vision → Text model) to extract structured data.
-
-Background thread updates results/temp/<token>.json with status.
-
-Processing page polls /status/<token> until complete.
-
-User reviews and edits extracted data.
-
-User adds optional comment and clicks "Accept & Save".
-
-Receipt is inserted into receipts table with s3_key (or local image_path if S3 fails).
-
-Success page confirms.
-
+1. Upload → AI → Review → Save → Deduction
+text
+User uploads image
+  ↓
+Image is compressed (1200px max, JPEG quality 85)
+  ↓
+AI processes (Vision → Text model) to extract:
+  - merchant, date, time, subtotal, tax, total, payment_method, category
+  - **suggests a deduction_category** from the 27 IRS categories (NEW)
+  ↓
+Background thread updates results/temp/<token>.json with status
+  ↓
+Processing page polls /status/<token> until complete
+  ↓
+User reviews and edits extracted data
+  ↓
+User selects or confirms the AI‑suggested deduction category (NEW)
+  ↓
+User adds optional comment and clicks "Accept & Save"
+  ↓
+Receipt is inserted into receipts table with:
+  - s3_key (or local image_path if S3 fails)
+  - deduction_category (NEW)
+  ↓
+Success page confirms
 2. Dashboard & Analytics
-User navigates to /dashboard.
-
-App fetches all receipts for the authenticated user (deleted_at IS NULL).
-
-Filters (date, category, merchant) are applied.
-
-Pagination: 25/50/100 per page.
-
-Summary cards, bar chart, line chart, and table are rendered.
-
-Table thumbnails use presigned URLs (if S3) or local paths.
-
-3. Delete Receipt
-User clicks "🗑️" on a receipt row (confirmation dialog).
-
-App fetches the receipt, deletes image from S3 (if s3_key exists).
-
-Soft‑delete: sets deleted_at = NOW().
-
-Receipt disappears from dashboard (hidden from all queries).
-
-(Planned) 30‑day cleanup job to permanently delete and free storage.
-
+text
+User navigates to /dashboard
+  ↓
+App fetches all receipts for authenticated user (deleted_at IS NULL)
+  ↓
+Filters (date, category, merchant) are applied
+  ↓
+Pagination: 25/50/100 per page
+  ↓
+Summary cards, bar chart, line chart, and table are rendered
+  ↓
+Table thumbnails use presigned URLs (if S3) or local paths
+3. 1099 Deduction Tracker (NEW)
+text
+User navigates to /expenditure
+  ↓
+App fetches all receipts with a deduction_category (not NULL)
+  ↓
+Calculates weekly, monthly, and year‑to‑date totals per category
+  ↓
+Renders table with all 27 deduction categories
+  ↓
+User can:
+  - View summary cards (total YTD, month, week)
+  - Export to CSV
+  - Download PDF report
+4. Delete Receipt
+text
+User clicks "🗑️" on a receipt row (confirmation dialog)
+  ↓
+App fetches the receipt, deletes image from S3 (if s3_key exists)
+  ↓
+Soft‑delete: sets deleted_at = NOW()
+  ↓
+Receipt disappears from dashboard (hidden from all queries)
+  ↓
+(Planned) 30‑day cleanup job to permanently delete and free storage
 🔒 Security Highlights
 Feature	Implementation
 Password Storage	bcrypt (12 rounds)
@@ -208,6 +240,7 @@ Verification Tokens	bcrypt hashed (not plaintext)
 Reset Tokens	bcrypt hashed (not plaintext)
 Image Access	Presigned URLs (expire in 1 hour) – no direct public access
 Per‑User Isolation	All queries filter by user_id
+Base URL	Configurable via .env for localhost → production domain switching
 🧪 What We Solved (The Journey)
 Challenge	Solution
 Duplicate receipt error	Changed submission_id to per‑user receipt_hash (includes user_id in MD5). Removed global unique constraint.
@@ -222,6 +255,10 @@ TemplateNotFound error	Explicitly set template_folder='../templates' in app/__in
 Cyclic import (limiter)	Defined limiter in app/__init__.py before importing blueprints.
 Chart.js "Canvas already in use"	Added destroy logic (canvas._chart) before re‑creating charts.
 Logout inline onclick	Attached logout event via addEventListener in external JS.
+Session email missing (NEW)	Added session['user_email'] and session['user_id'] on login – context processor now works for all pages.
+PDF export failing (NEW)	Fixed by upgrading weasyprint to 69.0 and pydyf to 0.12.1 for compatibility.
+Base URL pointing to localhost (NEW)	Added BASE_URL=https://despacio.ai to .env on production VPS.
+Dark theme hard to read (NEW)	Replaced with Clarity Business theme – light, high‑contrast, accessible for all users.
 🚀 What’s Next (Future Improvements)
 Priority	Feature	Why
 1	Celery + Redis	Replace threading for AI processing – scalable, reliable, no blocking.
@@ -233,33 +270,52 @@ Priority	Feature	Why
 7	User roles & permissions (RBAC)	Accountants, employees, admins.
 8	Bulk upload (ZIP or email forwarding)	Power‑user feature.
 9	Mobile‑first PWA	Phone‑friendly UI, offline support.
+10	Real‑time deduction suggestions	Suggest categories based on user's historical choices (ML).
 📊 Current Status
 Aspect	Status
 Authentication	✅ Complete (JWT, refresh, verify, reset, logout‑all)
 Receipt upload & AI	✅ Complete (compression, Novita AI, S3 storage)
 Review & confirm	✅ Complete (edit, comment, duplicate prevention)
+1099 Deduction Tracker (NEW)	✅ Complete (27 categories, AI suggestion, weekly/monthly/YTD)
+CSV Export (NEW)	✅ Complete (downloads all deduction data)
+PDF Export (NEW)	✅ Complete (professional report with summary and table)
+Clarity Business Theme (NEW)	✅ Complete (light, high‑contrast, accessible)
+Simplified Upload & Login (NEW)	✅ Complete (big buttons, zero reading, mobile‑friendly)
 Dashboard	✅ Complete (filters, charts, pagination, export)
 Delete (soft)	✅ Complete (S3 deletion + soft‑delete)
 Image storage	✅ Complete (Neon S3 + local fallback)
 Security	✅ Complete (CSP, HttpOnly, rate limiting, presigned URLs)
 Code structure	✅ Complete (modular, blueprints, services, decorators)
 Database	✅ Complete (Neon PostgreSQL, Alembic ready)
-Deployment	⚠️ Local development – ready for Gunicorn/Docker
+Deployment	✅ Live on VPS (Gunicorn + Nginx + Let's Encrypt)
 🎯 Final Words
 You have built a production‑ready, enterprise‑grade AI receipt platform with:
 
 Secure authentication (JWT + HttpOnly cookies + refresh rotation)
 
-Intelligent AI extraction (Novita Vision + Text)
+Intelligent AI extraction (Novita Vision + Text + deduction suggestion)
 
 Cloud‑native storage (Neon Object Storage with presigned URLs)
 
 Full analytics dashboard (filters, charts, pagination, export)
 
-Modular, maintainable code (blueprints, services, decorators)
+1099 Deduction Tracker (27 categories, weekly/monthly/YTD totals, CSV/PDF exports)
+
+Clarity Business UI (light, high‑contrast, accessible, mobile‑friendly)
+
+Modular, maintainable code (blueprints, services, decorators, single source of truth)
 
 Strict security (CSP, rate limiting, per‑user isolation)
 
-The app is ready for deployment – you can run it with python app.py and start uploading receipts immediately. The architecture supports scaling to thousands of users with minimal changes (add Celery, Redis, and Gunicorn).
+The app is live on production at https://despacio.ai and ready for real users. Users can upload receipts, get AI‑extracted data, assign deduction categories, and track their 1099 deductions weekly, monthly, or annually.
 
-You’ve come a long way from the initial prototype – this is now a solid foundation for a SaaS product.
+You’ve come a long way – this is now a solid foundation for a SaaS product. 🚀
+
+📝 How to Use This Document
+New Developers: Start with the Project Summary and Core Features sections.
+
+Contributors: Check the Architecture and Project Structure to understand the codebase.
+
+Maintainers: Use the Database Schema and Key Workflows for debugging.
+
+Future Planning: Review the What's Next section for planned improvements.
