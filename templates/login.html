@@ -1,57 +1,233 @@
 {% extends "base.html" %}
 
-{% block content %}
-<!-- Full‑screen wrapper for the Money Mirror background -->
-<div class="mirror-login-wrapper">
-    
-    <!-- Floating ambient orbs for that "snapshot / reflection" energy -->
-    <div class="orb orb-1"></div>
-    <div class="orb orb-2"></div>
-    <div class="orb orb-3"></div>
+{% block title %}Login{% endblock %}
 
-    <div class="auth-container modern-auth glass-card">
-        <h1>👀 Your financial mirror</h1>
-        <p class="subtitle">Snapshots of your life. No spreadsheets. Just clarity.</p>
+{% block content %}
+<div class="login-simple">
+    <div class="login-card">
+        <h1>👋 Welcome Back</h1>
+        <p class="login-subtitle">Sign in to your account</p>
 
         <form id="login-form" autocomplete="off">
-            <!-- Email -->
             <div class="input-group">
-                <label for="email">Email Address</label>
+                <label for="email">Email</label>
                 <input type="email" id="email" placeholder="you@example.com" required autofocus>
             </div>
 
-            <!-- Password with toggle -->
-            <div class="input-group password-group">
+            <div class="input-group">
                 <label for="password">Password</label>
                 <div class="password-wrapper">
                     <input type="password" id="password" placeholder="Enter your password" required>
-                    <button type="button" id="toggle-password" aria-label="Show password">
-                        👁️
-                    </button>
+                    <button type="button" id="toggle-password" class="toggle-btn">👁</button>
                 </div>
             </div>
 
-            <!-- Remember me & Forgot link -->
-            <div class="form-options">
-                <label class="remember-me">
-                    <input type="checkbox" id="remember" checked> Remember me
-                </label>
+            <div class="login-options">
                 <a href="/forgot-password" class="forgot-link">Forgot password?</a>
             </div>
 
-            <!-- Submit button with spinner -->
-            <button type="submit" id="login-btn">
-                <span class="btn-text">See where I’m at →</span>
+            <button type="submit" id="login-btn" class="login-btn">
+                <span class="btn-text">Sign In</span>
                 <span class="spinner-btn" style="display:none;">⏳</span>
             </button>
 
-            <!-- Message area -->
             <div id="msg" class="msg"></div>
         </form>
 
-        <div class="auth-footer">
-            New here? <a href="/register">Get your first snapshot.</a>
+        <div class="login-footer">
+            Don't have an account? <a href="/register">Create one</a>
         </div>
     </div>
 </div>
+
+<style>
+    .login-simple {
+        max-width: 400px;
+        margin: 3rem auto;
+        padding: 1rem;
+    }
+
+    .login-card {
+        background: #ffffff;
+        border-radius: 16px;
+        padding: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+        border: 1px solid #e2e8f0;
+    }
+
+    .login-card h1 {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #1a2332;
+        text-align: center;
+        margin-bottom: 0.2rem;
+    }
+
+    .login-subtitle {
+        text-align: center;
+        color: #718096;
+        margin-bottom: 1.5rem;
+    }
+
+    .input-group {
+        margin-bottom: 1.2rem;
+    }
+
+    .input-group label {
+        display: block;
+        font-weight: 600;
+        color: #4a5568;
+        font-size: 0.9rem;
+        margin-bottom: 0.3rem;
+    }
+
+    .input-group input {
+        width: 100%;
+        padding: 0.7rem 0.8rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        background: #f7fafc;
+        font-size: 1rem;
+        color: #1a2332;
+        transition: border-color 0.2s, box-shadow 0.2s;
+        box-sizing: border-box;
+    }
+
+    .input-group input:focus {
+        outline: none;
+        border-color: #f0a830;
+        box-shadow: 0 0 0 3px rgba(240, 168, 48, 0.15);
+    }
+
+    .password-wrapper {
+        position: relative;
+    }
+
+    .password-wrapper input {
+        padding-right: 3rem;
+    }
+
+    .toggle-btn {
+        position: absolute;
+        right: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        background: none;
+        border: none;
+        font-size: 1.2rem;
+        cursor: pointer;
+        color: #718096;
+        padding: 0;
+        line-height: 1;
+    }
+
+    .toggle-btn:hover {
+        color: #1a2332;
+    }
+
+    .login-options {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 1.5rem;
+    }
+
+    .forgot-link {
+        color: #f0a830;
+        text-decoration: none;
+        font-size: 0.9rem;
+        font-weight: 500;
+    }
+
+    .forgot-link:hover {
+        text-decoration: underline;
+    }
+
+    .login-btn {
+        width: 100%;
+        padding: 0.8rem;
+        background: #f0a830;
+        color: #ffffff;
+        border: none;
+        border-radius: 10px;
+        font-size: 1.2rem;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.2s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+    }
+
+    .login-btn:hover {
+        background: #d99a2a;
+    }
+
+    .login-btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+    }
+
+    .msg {
+        margin-top: 1rem;
+        padding: 0.6rem;
+        border-radius: 8px;
+        text-align: center;
+        display: none;
+    }
+
+    .msg.success {
+        display: block;
+        background: #f0fff4;
+        color: #276749;
+        border: 1px solid #c6f6d5;
+    }
+
+    .msg.error {
+        display: block;
+        background: #fff5f5;
+        color: #9b2c2c;
+        border: 1px solid #feb2b2;
+    }
+
+    .login-footer {
+        text-align: center;
+        margin-top: 1.5rem;
+        color: #718096;
+        font-size: 0.95rem;
+    }
+
+    .login-footer a {
+        color: #f0a830;
+        text-decoration: none;
+        font-weight: 500;
+    }
+
+    .login-footer a:hover {
+        text-decoration: underline;
+    }
+
+    .spinner-btn {
+        display: inline-block;
+        animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 480px) {
+        .login-card {
+            padding: 1.5rem;
+        }
+        .login-card h1 {
+            font-size: 1.5rem;
+        }
+        .login-btn {
+            font-size: 1rem;
+            padding: 0.7rem;
+        }
+    }
+</style>
 {% endblock %}

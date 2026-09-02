@@ -13,4 +13,5 @@ openai
 novita-client
 boto3
 gunicorn
-weasyprint
+weasyprint==69.0
+

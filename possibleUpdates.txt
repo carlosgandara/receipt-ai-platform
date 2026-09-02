@@ -41,6 +41,8 @@ No vendor recognition	AI extracts merchant, but no vendor database.	Add a vendor
 -add income
 -add sentry
 -need to edit
+-password change on profile.
+-when create an account,sends localhost. 
 
 
 
